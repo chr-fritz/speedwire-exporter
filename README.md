@@ -6,6 +6,10 @@ protocol. It reads values from SMA **Energy Meters** (Home Manager) and
 library (the same library used by [evcc](https://evcc.io)) and exposes them as
 Prometheus metrics.
 
+> **Status: in development.** This repository is being (re)built from scratch.
+> See the design document before contributing:
+> [`docs/2026-07-23-energy-meter-export-design.md`](docs/2026-07-23-energy-meter-export-design.md).
+
 ## Planned features
 
 - Reads SMA Energy Meters and inverters discovered via Speedwire multicast.
