@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM busybox:stable-glibc
+FROM scratch
 ARG TARGETPLATFORM
-COPY $TARGETPLATFORM/speedwire-exporter /usr/bin/
+COPY $TARGETPLATFORM/speedwire-exporter /
+COPY scripts/docker/etc_passwd /etc/passwd
 COPY defaultConfig.yaml /etc/speedwire-exporter/config.yaml
 EXPOSE 8080/tcp
 VOLUME /etc/speedwire-exporter
-RUN  addgroup -g 1337 speedwire-exporter \
-     && adduser -s /usr/sbin/nologin -G speedwire-exporter -D -H -u 1337 speedwire-exporter
-USER speedwire-exporter
-ENTRYPOINT ["/usr/bin/speedwire-exporter"]
+USER nonroot
+ENTRYPOINT ["/speedwire-exporter"]
 CMD ["run", "--config","/etc/speedwire-exporter/config.yaml"]

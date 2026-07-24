@@ -115,6 +115,7 @@ dockers_v2:
     sbom: "{{ not .IsSnapshot }}"
     extra_files:
       - defaultConfig.yaml
+      - scripts/docker/etc_passwd
 
 sboms:
   - artifacts: archive
