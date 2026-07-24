@@ -130,6 +130,28 @@ var mappedInverterIDs = func() map[sunny.ValueID]struct{} {
 	}
 	m[sunny.SoftwareVersion] = struct{}{}
 	m[sunny.DeviceName] = struct{}{}
+
+	// Raw Ws twins of the *KWh values above: sunny exposes both the raw counter
+	// (Ws) and a pre-divided kWh alias for the same physical value. We consume
+	// only the *KWh alias in inverterEnergyCounters/inverterEnergyGauges, so
+	// these raw counters are deliberately superseded rather than unmapped -
+	// list them here to keep the listener from logging misleading "unmapped
+	// speedwire value" warnings for data that IS exported (via its KWh twin).
+	for _, id := range []sunny.ValueID{
+		sunny.PvEnergyTotal,
+		sunny.GridEnergyExport,
+		sunny.GridEnergyImport,
+		sunny.GridEnergyExportDay,
+		sunny.GridEnergyImportDay,
+		sunny.ConsumptionEnergy,
+		sunny.BatteryEnergyCharge,
+		sunny.BatteryEnergyDischarge,
+		sunny.SelfConsumption,
+		sunny.ActiveEnergyPlus,
+		sunny.ActiveEnergyPlusToday,
+	} {
+		m[id] = struct{}{}
+	}
 	return m
 }()
 

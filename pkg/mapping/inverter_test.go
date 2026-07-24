@@ -118,6 +118,28 @@ func TestIsMappedInverterAndInfo(t *testing.T) {
 	assert.True(t, IsMappedInverter(sunny.PvPower))
 	assert.False(t, IsMappedInverter(sunny.ReactiveEnergyPlusL1))
 
+	// raw Ws twins of the *KWh values are deliberately superseded, not unmapped
+	assert.True(t, IsMappedInverter(sunny.PvEnergyTotal))
+	assert.True(t, IsMappedInverter(sunny.GridEnergyExport))
+	assert.True(t, IsMappedInverter(sunny.GridEnergyImport))
+	assert.True(t, IsMappedInverter(sunny.GridEnergyExportDay))
+	assert.True(t, IsMappedInverter(sunny.GridEnergyImportDay))
+	assert.True(t, IsMappedInverter(sunny.ConsumptionEnergy))
+	assert.True(t, IsMappedInverter(sunny.BatteryEnergyCharge))
+	assert.True(t, IsMappedInverter(sunny.BatteryEnergyDischarge))
+	assert.True(t, IsMappedInverter(sunny.SelfConsumption))
+	assert.True(t, IsMappedInverter(sunny.ActiveEnergyPlus))
+	assert.True(t, IsMappedInverter(sunny.ActiveEnergyPlusToday))
+
+	// these stay genuinely unmapped (intentional info logs)
+	assert.False(t, IsMappedInverter(sunny.DeviceStatus))
+	assert.False(t, IsMappedInverter(sunny.DeviceType))
+	assert.False(t, IsMappedInverter(sunny.DeviceClass))
+	assert.False(t, IsMappedInverter(sunny.WaitTimeFeedIn))
+	assert.False(t, IsMappedInverter(sunny.TimeGridFailure))
+	assert.False(t, IsMappedInverter(sunny.ActiveEnergyMinus))
+	assert.False(t, IsMappedInverter(sunny.ActiveEnergyMinusKWh))
+
 	s, ok := InverterInfo(map[sunny.ValueID]interface{}{sunny.SoftwareVersion: "3.10.24.R"})
 	assert.True(t, ok)
 	assert.Equal(t, "info", s.Name)
