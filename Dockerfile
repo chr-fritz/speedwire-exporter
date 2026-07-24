@@ -1,4 +1,4 @@
-# Copyright © 2020-2023 Christian Fritz <mail@chr-fritz.de>
+# Copyright © 2026 Christian Fritz <mail@chr-fritz.de>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,8 @@
 # limitations under the License.
 
 FROM busybox:stable-glibc
-COPY speedwire-exporter /usr/bin/
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/speedwire-exporter /usr/bin/
 COPY defaultConfig.yaml /etc/speedwire-exporter/config.yaml
 EXPOSE 8080/tcp
 VOLUME /etc/speedwire-exporter

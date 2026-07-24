@@ -1,4 +1,4 @@
-# Copyright © 2020-2022 Christian Fritz <mail@chr-fritz.de>
+# Copyright © 2026 Christian Fritz <mail@chr-fritz.de>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -96,89 +96,28 @@ nfpms:
       postinstall: "scripts/postinstall.sh"
       preremove: "scripts/preremove.sh"
 
-dockers:
-  - goos: linux
-    goarch: amd64
-    ids:
-      - speedwire-exporter
-    use: buildx
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-x64"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.CommitDate}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.url=https://github.com/chr-fritz/speedwire-exporter"
-      - "--label=org.opencontainers.image.licenses=Apache-2.0"
-      - "--platform=linux/amd64"
+dockers_v2:
+  - images:
+      - ghcr.io/chr-fritz/speedwire-exporter
+    tags:
+      - "v{{.Version}}"
+      - "{{ if .IsSnapshot }}nightly{{ end }}"
+      - "{{ if not (or .IsSnapshot .IsDraft) }}latest{{ end }}"
+      - "{{ if not (or .IsSnapshot .IsDraft) }}v{{ .Major }}.{{ .Minor }}{{ end }}"
+      - "{{ if not (or .IsSnapshot .IsDraft) }}v{{ .Major }}{{ end }}"
+    labels:
+      org.opencontainers.image.created: "{{.CommitDate}}"
+      org.opencontainers.image.title: "{{.ProjectName}}"
+      org.opencontainers.image.revision: "{{.FullCommit}}"
+      org.opencontainers.image.version: "{{.Version}}"
+      org.opencontainers.image.url: "https://github.com/chr-fritz/speedwire-exporter"
+      org.opencontainers.image.licenses: "Apache-2.0"
+    sbom: "{{ not .IsSnapshot }}"
     extra_files:
       - defaultConfig.yaml
-  - goos: linux
-    goarch: arm64
-    ids:
-      - speedwire-exporter
-    use: buildx
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm64"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.CommitDate}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.url=https://github.com/chr-fritz/speedwire-exporter"
-      - "--label=org.opencontainers.image.licenses=Apache-2.0"
-      - "--platform=linux/arm64/v8"
-    extra_files:
-      - defaultConfig.yaml
-  - goos: linux
-    goarch: arm
-    goarm: 7
-    ids:
-      - speedwire-exporter
-    use: buildx
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm7"
-    dockerfile: Dockerfile
-    build_flag_templates:
-      - "--pull"
-      - "--label=org.opencontainers.image.created={{.CommitDate}}"
-      - "--label=org.opencontainers.image.title={{.ProjectName}}"
-      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
-      - "--label=org.opencontainers.image.version={{.Version}}"
-      - "--label=org.opencontainers.image.url=https://github.com/chr-fritz/speedwire-exporter"
-      - "--label=org.opencontainers.image.licenses=Apache-2.0"
-      - "--platform=linux/arm/v7"
-    extra_files:
-      - defaultConfig.yaml
-docker_manifests:
-  - name_template: "ghcr.io/chr-fritz/speedwire-exporter:latest"
-    skip_push: auto
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-x64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm7"
-  - name_template: "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}"
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-x64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm7"
-  - name_template: "ghcr.io/chr-fritz/speedwire-exporter:v{{ .Major }}.{{ .Minor }}"
-    skip_push: auto
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-x64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm7"
-  - name_template: "ghcr.io/chr-fritz/speedwire-exporter:v{{ .Major }}"
-    skip_push: auto
-    image_templates:
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-x64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm64"
-      - "ghcr.io/chr-fritz/speedwire-exporter:{{ .Tag }}-arm7"
+
+sboms:
+  - artifacts: archive
 
 release:
   prerelease: auto
