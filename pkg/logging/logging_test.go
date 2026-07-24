@@ -17,10 +17,14 @@
 package logging
 
 import (
+	"bytes"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_loggerConfig_Initialize(t *testing.T) {
@@ -62,11 +66,13 @@ func Test_loggerConfig_Initialize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			viper.Set("logging.level", tt.level)
+			viper.Set("logging.format", tt.format)
+
 			ctx := t.Context()
-			lc := &loggerConfig{
-				level:         tt.level,
-				formatterName: tt.format,
-			}
+			lc := &loggerConfig{}
 			lc.Initialize()
 			logger := slog.With("dummy")
 			assert.True(t, logger.Enabled(ctx, tt.expectedLevel))
@@ -79,6 +85,65 @@ func Test_loggerConfig_Initialize(t *testing.T) {
 	}
 }
 
-func TestLogging(t *testing.T) {
+// Test_loggerConfig_Initialize_ReadsFromViper is a focused regression test for
+// the bug where Initialize() only ever looked at the flag-bound struct fields
+// (which default to "info"/"text") and ignored whatever was configured via
+// viper (e.g. read from a config file's logging.format/logging.level).
+func Test_loggerConfig_Initialize_ReadsFromViper(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("logging.format", "json")
+	viper.Set("logging.level", "debug")
 
+	lc := &loggerConfig{
+		// Deliberately pre-populate with the flag defaults, to prove that
+		// Initialize() overrides them from viper rather than using these.
+		level:         "info",
+		formatterName: "text",
+	}
+	lc.Initialize()
+
+	logger := slog.Default()
+	assert.True(t, logger.Enabled(t.Context(), slog.LevelDebug))
+	handler := logger.Handler()
+	require.IsType(t, &tracingLogHandler{}, handler)
+	logHandler := handler.(*tracingLogHandler)
+	assert.IsType(t, &slog.JSONHandler{}, logHandler.parent)
+}
+
+func Test_selectHandler(t *testing.T) {
+	tests := []struct {
+		name         string
+		format       string
+		expectedType slog.Handler
+		expectJSON   bool
+	}{
+		{"json format", "json", &slog.JSONHandler{}, true},
+		{"JSON case-insensitive", "JSON", &slog.JSONHandler{}, true},
+		{"text format", "text", &slog.TextHandler{}, false},
+		{"unknown format falls back to text", "unknown", &slog.TextHandler{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			handler := selectHandler(tt.format, &buf, &slog.HandlerOptions{})
+			assert.IsType(t, tt.expectedType, handler)
+
+			logger := slog.New(handler)
+			logger.Info("hello", "key", "value")
+
+			if tt.expectJSON {
+				var decoded map[string]any
+				err := json.Unmarshal(buf.Bytes(), &decoded)
+				require.NoError(t, err, "expected valid JSON output, got: %s", buf.String())
+				assert.Equal(t, "hello", decoded["msg"])
+				assert.Equal(t, "value", decoded["key"])
+			} else {
+				err := json.Unmarshal(buf.Bytes(), &map[string]any{})
+				assert.Error(t, err, "expected non-JSON (text) output, got: %s", buf.String())
+				assert.Contains(t, buf.String(), "hello")
+			}
+		})
+	}
 }

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/mitchellh/go-homedir"
 
@@ -67,12 +68,28 @@ func (o *RootOptions) initConfig() {
 		viper.SetConfigName(".speedwire-exporter")
 	}
 
-	viper.AutomaticEnv() // read in environment variables that match
+	configureEnv()
 
 	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
+	configErr := viper.ReadInConfig()
+
+	// Initialize logging only now that viper has (potentially) read the config
+	// file, so logging.level/logging.format from the config are honored.
+	loggerConfiguration.Initialize()
+
+	if configErr == nil {
 		slog.Info("Using config file: " + viper.ConfigFileUsed())
 	}
+}
+
+// configureEnv wires up viper's environment variable support so config keys
+// can be overridden via SPEEDWIRE_<KEY> env vars (dots replaced by
+// underscores), e.g. SPEEDWIRE_DISCOVERY_PASSWORD for discovery.password.
+func configureEnv() {
+	viper.SetEnvPrefix("SPEEDWIRE")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv() // read in environment variables that match
+	_ = viper.BindEnv("discovery.password")
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

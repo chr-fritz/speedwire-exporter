@@ -16,10 +16,13 @@ package cmd
 
 import (
 	"github.com/chr-fritz/speedwire-exporter/pkg/logging"
-	"github.com/spf13/cobra"
 )
 
+// loggerConfiguration is initialized from the persistent flags in init() below
+// and later invoked explicitly from initConfig() (cmd/root.go) once viper has
+// read the config file, so config values are honored (see cmd/root.go).
+var loggerConfiguration logging.LoggerConfiguration
+
 func init() {
-	loggerConfig := logging.InitFlags(rootCmd.PersistentFlags(), rootCmd)
-	cobra.OnInitialize(loggerConfig.Initialize)
+	loggerConfiguration = logging.InitFlags(rootCmd.PersistentFlags(), rootCmd)
 }

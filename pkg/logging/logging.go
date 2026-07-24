@@ -17,6 +17,7 @@
 package logging
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -76,6 +77,9 @@ func flagCompletion(_ *cobra.Command, _ []string, _ string) ([]string, cobra.She
 }
 
 func (lc *loggerConfig) Initialize() {
+	lc.level = viper.GetString("logging.level")
+	lc.formatterName = viper.GetString("logging.format")
+
 	level := lc.setLevel()
 
 	opts := &slog.HandlerOptions{
@@ -98,14 +102,19 @@ func (lc *loggerConfig) setLevel() slog.Level {
 	return level
 }
 func (lc *loggerConfig) setFormatter(options *slog.HandlerOptions) slog.Handler {
-	var parent slog.Handler
-	switch strings.ToLower(lc.formatterName) {
+	return NewTracingLogHandler(selectHandler(lc.formatterName, os.Stdout, options))
+}
+
+// selectHandler is a pure helper that picks the slog.Handler implementation
+// for the given formatter name, writing to w. It is separated out from
+// setFormatter so it can be unit-tested without touching os.Stdout.
+func selectHandler(formatterName string, w io.Writer, options *slog.HandlerOptions) slog.Handler {
+	switch strings.ToLower(formatterName) {
 	case "json":
-		parent = slog.NewJSONHandler(os.Stdout, options)
+		return slog.NewJSONHandler(w, options)
 	case "text":
 		fallthrough
 	default:
-		parent = slog.NewTextHandler(os.Stdout, options)
+		return slog.NewTextHandler(w, options)
 	}
-	return NewTracingLogHandler(parent)
 }

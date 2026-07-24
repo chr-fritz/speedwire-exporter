@@ -94,6 +94,19 @@ devices:              # only listed serials are exported; labels are attached ve
 > keys*. Differing label-key sets across same-type devices produce metric series
 > with inconsistent dimensions, which Prometheus rejects on scrape.
 
+### Environment variables
+
+Any config key can be overridden via an environment variable prefixed with
+`SPEEDWIRE_`, with dots replaced by underscores (e.g. `discovery.password` →
+`SPEEDWIRE_DISCOVERY_PASSWORD`). This is the recommended way to supply secrets
+like the discovery password without writing them to disk:
+
+```shell
+SPEEDWIRE_DISCOVERY_PASSWORD=s3cret speedwire-exporter run --config /etc/speedwire-exporter/config.yaml
+```
+
+Env vars take precedence over the config file but not over explicit CLI flags.
+
 ## Usage
 
 ```shell
