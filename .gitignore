@@ -1,1 +1,10 @@
+dist/
 .idea/
+.iml
+completions/
+bin/
+reports/
+.sonarcloud.properties
+**/fake/*Mock.go
+**/fake/*Mocks.go
+.superpowers/

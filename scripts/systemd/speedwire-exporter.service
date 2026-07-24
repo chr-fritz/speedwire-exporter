@@ -1,0 +1,20 @@
+[Unit]
+Description=speedwire Prometheus exporter
+After=network.target
+ConditionPathExists=!/etc/speedwire-exporter/speedwire-exporter_not_to_be_run
+[Service]
+EnvironmentFile=-/etc/default/speedwire-exporter
+User=root
+Type=simple
+Restart=on-failure
+RestartSec=10
+ExecStart=/usr/bin/speedwire-exporter run --config $CONFIG_PATH
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+Alias=speedwire-exporter.service
+
+[Install]
+WantedBy=multi-user.target
+Alias=speedwire-exporter.service

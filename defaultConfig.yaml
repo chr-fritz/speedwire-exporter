@@ -1,0 +1,21 @@
+exporter:
+    port: 8080
+    goMetrics: false
+logging:
+    level: info
+    format: json
+fetchInterval: 5s
+interface: eth0
+discovery:
+    password: "0000"
+metrics:
+    energyMeterPrefix: smartmeter
+    inverterPrefix: sunny_inverter
+    info: false
+# Note: all devices of the SAME type (e.g. all inverters, all energy meters) should
+# declare the SAME set of label keys. Differing label-key sets across same-type devices
+# produce metric series with inconsistent dimensions, which prometheus rejects on scrape.
+devices: [ ]
+#  - serial: 1234567890
+#    labels:
+#      meter: grid
