@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/chr-fritz/speedwire-exporter/pkg/observerbility"
 	"github.com/heptiolabs/healthcheck"
@@ -35,6 +36,14 @@ func NewHttpServer(port uint16) (*HttpServer, error) {
 	server := &http.Server{
 		Handler:  mux,
 		ErrorLog: log.Default(),
+		// Without an IdleTimeout, idle keep-alive connections are kept open
+		// forever, and each one retains its per-connection serve/connReader
+		// goroutines. A client (browser, scraper, probe) that keeps opening new
+		// connections faster than it reuses them would grow the goroutine count
+		// without bound until the goroutine-threshold healthcheck trips. Reaping
+		// idle connections bounds goroutines to actually-active connections.
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	return &HttpServer{

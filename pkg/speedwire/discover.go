@@ -58,6 +58,11 @@ func Discover(ctx context.Context, iface, password string) ([]DiscoveredDevice, 
 			if err != nil {
 				slog.Warn("failed to read values from device", "serial", dev.SerialNumber(), "err", err)
 			}
+			// Each discovered device registers a receiver channel on the shared,
+			// cached connection in NewDevice. We only need the device for this
+			// one-shot read, so unregister it now; otherwise every Discover call
+			// would leak a receiver registration on the long-lived connection.
+			dev.Close()
 			result = append(result, DiscoveredDevice{
 				Serial:        dev.SerialNumber(),
 				Address:       dev.Address().String(),
