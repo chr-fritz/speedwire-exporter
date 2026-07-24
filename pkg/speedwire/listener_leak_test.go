@@ -61,7 +61,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 	if err != nil {
 		t.Skipf("control listen: %v", err)
 	}
-	defer ctrl.Close()
+	defer func() { _ = ctrl.Close() }()
 	go func() {
 		buf := make([]byte, 2048)
 		for {
@@ -79,7 +79,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 
 	sendConn, err := net.ListenPacket("udp4", "0.0.0.0:0")
 	require.NoError(t, err)
-	defer sendConn.Close()
+	defer func() { _ = sendConn.Close() }()
 	pc := ipv4.NewPacketConn(sendConn)
 	if err := pc.SetMulticastInterface(ifi); err != nil {
 		t.Skipf("cannot set multicast interface: %v", err)
