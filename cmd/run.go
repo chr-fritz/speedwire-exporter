@@ -71,7 +71,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	httpServer.AddHandleFunc("/devices", newDevicesHandler(func(ctx context.Context) ([]speedwire.DiscoveredDevice, error) {
 		return speedwire.Discover(ctx, cfg.Interface, cfg.Discovery.Password)
 	}))
-	httpServer.AddLivenessCheck("goroutine-threshold", healthcheck.GoroutineCountCheck(100))
+	httpServer.AddLivenessCheck("goroutine-threshold", healthcheck.GoroutineCountCheck(goroutineThreshold(len(cfg.Devices))))
 
 	col := collector.NewCollector()
 	if err = registry.Register(col); err != nil {
@@ -82,6 +82,15 @@ func run(cmd *cobra.Command, _ []string) error {
 	go listener.Run(ctx)
 
 	return httpServer.Run(ctx)
+}
+
+// goroutineThreshold returns the liveness goroutine-count threshold for the given number of
+// configured devices. Steady-state usage is ~15 goroutines and barely grows with the device
+// count (devices are read sequentially), so the fixed base already leaves generous headroom; the
+// per-device term covers transient spikes during discovery windows and concurrent /devices
+// scrapes.
+func goroutineThreshold(numDevices int) int {
+	return 100 + 20*numDevices
 }
 
 func newRegistry(withGo bool) *prometheus.Registry {

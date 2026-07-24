@@ -34,15 +34,24 @@ type Listener struct {
 	seenUnmapped sync.Map // sunny.ValueID -> struct{}
 }
 
+// discoveryWindow bounds a single discovery cycle, mirroring Discover and sunny's own
+// SimpleDiscoverDevices idiom. discoveryInterval is how often the device list is refreshed.
+//
+// These are package variables (not constants) only so tests can shorten them.
+var (
+	discoveryWindow   = 3 * time.Second
+	discoveryInterval = 5 * time.Minute
+)
+
 // NewListener creates a Listener that reads configured devices on cfg.FetchInterval and observes
 // their values via col.
 func NewListener(cfg *config.Config, col *collector.Collector) *Listener {
 	return &Listener{cfg: cfg, col: col}
 }
 
-// Run discovers Speedwire devices on the configured interface and, on every FetchInterval tick,
-// reads each known device and feeds configured ones into the collector. It blocks until ctx is
-// done.
+// Run periodically discovers Speedwire devices on the configured interface and, on every
+// FetchInterval tick, reads each known device and feeds configured ones into the collector. It
+// blocks until ctx is done.
 func (l *Listener) Run(ctx context.Context) {
 	conn, err := sunny.NewConnection(l.cfg.Interface)
 	if err != nil {
@@ -51,10 +60,7 @@ func (l *Listener) Run(ctx context.Context) {
 	}
 
 	devs := make(chan *sunny.Device, 10)
-	go func() {
-		conn.DiscoverDevices(ctx, devs, l.cfg.Discovery.Password)
-		close(devs)
-	}()
+	go l.discoverLoop(ctx, conn, devs)
 
 	ticker := time.NewTicker(l.cfg.FetchInterval)
 	defer ticker.Stop()
@@ -63,25 +69,55 @@ func (l *Listener) Run(ctx context.Context) {
 	for {
 		select {
 		case dev := <-devs:
-			// A closed channel yields a nil dev once DiscoverDevices has returned; skip it so we
-			// never insert a nil device into known.
-			if dev != nil {
-				known[dev.SerialNumber()] = dev
+			// discoverLoop closes devs on shutdown, yielding a nil dev; skip it so we never
+			// insert a nil device into known.
+			if dev == nil {
+				continue
 			}
+			serial := dev.SerialNumber()
+			// Re-discovery creates a fresh *sunny.Device (with a new receiver channel
+			// registered on the shared, long-lived connection) for a device we may already
+			// know. Close the previous one so its receiver registration does not leak.
+			if old, ok := known[serial]; ok {
+				old.Close()
+			}
+			known[serial] = dev
 		case <-ticker.C:
 			for serial, dev := range known {
 				l.read(ctx, serial, dev)
 			}
 		case <-ctx.Done():
-			// Drain devs until DiscoverDevices closes it: DiscoverDevices only returns (and thus
-			// only closes devs) after its own wg.Wait() completes, which requires every in-flight
-			// per-IP goroutine's blocking `devices <- device` send to be received. If we stopped
-			// reading here, those sends would block forever and leak the discovery goroutine
-			// (and its discoverer registration on conn). Draining unblocks them so
-			// DiscoverDevices can finish and the goroutine above can close(devs) and exit.
+			// Drain devs until discoverLoop closes it. A discovery window in flight may have
+			// per-IP goroutines blocked on their `devs <- device` send; DiscoverDevices only
+			// returns (via wg.Wait()) once those sends are received. Draining unblocks them so
+			// discoverLoop can finish and close(devs).
 			for range devs {
 			}
 			return
+		}
+	}
+}
+
+// discoverLoop repeatedly runs a bounded discovery cycle, feeding discovered devices into devs,
+// until ctx is done. Discovery must NOT run continuously: sunny's DiscoverDevices spawns a
+// goroutine for every received packet and re-attempts NewDevice on every packet from any source
+// whose handshake never completes (for example this host's own multicast discovery requests
+// looped back, or any other Speedwire-speaking device that is not a readable inverter/energy
+// meter). Each such attempt blocks for ~3s holding an internal mutex, so packets arriving faster
+// than one per 3s pile up goroutines without bound. Time-boxing each cycle to discoveryWindow
+// makes DiscoverDevices return (draining its workers) instead of running forever, which keeps the
+// goroutine count bounded.
+func (l *Listener) discoverLoop(ctx context.Context, conn *sunny.Connection, devs chan *sunny.Device) {
+	defer close(devs)
+	for {
+		discoverCtx, cancel := context.WithTimeout(ctx, discoveryWindow)
+		conn.DiscoverDevices(discoverCtx, devs, l.cfg.Discovery.Password)
+		cancel()
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(discoveryInterval):
 		}
 	}
 }
