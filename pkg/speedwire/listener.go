@@ -117,6 +117,48 @@ func (l *Listener) Run(ctx context.Context) {
 	}
 }
 
+// discoveryInterval returns how often a discovery cycle may run, and discoveryWindow how long
+// a single cycle lasts. A zero configured value means "not set" and falls back to the
+// built-in default, so a config that omits them cannot reduce either to nothing.
+func (l *Listener) discoveryInterval() time.Duration {
+	if l.cfg.Discovery.Interval > 0 {
+		return l.cfg.Discovery.Interval
+	}
+	return discoveryInterval
+}
+
+func (l *Listener) discoveryWindow() time.Duration {
+	if l.cfg.Discovery.Window > 0 {
+		return l.cfg.Discovery.Window
+	}
+	return discoveryWindow
+}
+
+// needsDiscovery reports whether a discovery cycle is worth running.
+//
+// Discovery is not free for the rest of the network: a cycle broadcasts an SMA discovery
+// request to the whole Speedwire multicast group every 500ms for the duration of the window,
+// and third-party Speedwire clients on that group have to cope with every one of them. It
+// buys nothing while every configured device is already being read, because the device list
+// cannot change: the exporter only ever reads the serials named in the configuration.
+//
+// So only look when there is something to find - a configured device that has never answered,
+// or one that has gone silent for longer than a full discovery period and may have changed
+// address or rebooted. With nothing configured at all there is nothing to find either, and
+// staying quiet on the wire beats announcing ourselves for no reason.
+func (l *Listener) needsDiscovery(now time.Time) bool {
+	reads := l.LastSuccessfulReads()
+	if len(reads) == 0 {
+		return false
+	}
+	for _, last := range reads {
+		if last.IsZero() || now.Sub(last) >= l.discoveryInterval() {
+			return true
+		}
+	}
+	return false
+}
+
 // discoverLoop repeatedly runs a bounded discovery cycle, feeding discovered devices into devs,
 // until ctx is done. Discovery must NOT run continuously: sunny's DiscoverDevices spawns a
 // goroutine for every received packet and re-attempts NewDevice on every packet from any source
@@ -126,17 +168,26 @@ func (l *Listener) Run(ctx context.Context) {
 // than one per 3s pile up goroutines without bound. Time-boxing each cycle to discoveryWindow
 // makes DiscoverDevices return (draining its workers) instead of running forever, which keeps the
 // goroutine count bounded.
+//
+// Cycles are additionally skipped whenever needsDiscovery says there is nothing to look for,
+// which is the steady state. That matters beyond this process: a cycle broadcasts an SMA
+// discovery request to the shared multicast group every 500ms for the whole window, and other
+// Speedwire clients on that group have to cope with each one.
 func (l *Listener) discoverLoop(ctx context.Context, conn *sunny.Connection, devs chan *sunny.Device) {
 	defer close(devs)
 	for {
-		discoverCtx, cancel := context.WithTimeout(ctx, discoveryWindow)
-		conn.DiscoverDevices(discoverCtx, devs, l.cfg.Discovery.Password)
-		cancel()
+		if l.needsDiscovery(time.Now()) {
+			discoverCtx, cancel := context.WithTimeout(ctx, l.discoveryWindow())
+			conn.DiscoverDevices(discoverCtx, devs, l.cfg.Discovery.Password)
+			cancel()
+		} else {
+			slog.Debug("skipping Speedwire discovery, every configured device is being read")
+		}
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(discoveryInterval):
+		case <-time.After(l.discoveryInterval()):
 		}
 	}
 }

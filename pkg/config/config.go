@@ -18,6 +18,11 @@ type ExporterConfig struct {
 
 type DiscoveryConfig struct {
 	Password string
+	// Interval is how often a discovery cycle may run; Window bounds a single cycle. Zero
+	// means "not configured" and falls back to the built-in default, so a partial user
+	// config cannot silently reduce either to nothing.
+	Interval time.Duration
+	Window   time.Duration
 }
 
 type MetricsConfig struct {

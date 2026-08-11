@@ -128,7 +128,14 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 	}()
 	defer func() { close(stop); wg.Wait() }()
 
-	cfg := &config.Config{Interface: iface, FetchInterval: time.Second}
+	// A configured device that is never found is what keeps discovery running: cycles are
+	// skipped while every configured device is being read, and skipped entirely when none is
+	// configured, so without this the leak path under test would never be entered.
+	cfg := &config.Config{
+		Interface:     iface,
+		FetchInterval: time.Second,
+		Devices:       []config.DeviceConfig{{Serial: 1234567890}},
+	}
 	l := NewListener(cfg, collector.NewCollector())
 
 	ctx, cancel := context.WithCancel(context.Background())

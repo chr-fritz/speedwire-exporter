@@ -62,6 +62,8 @@ fetchInterval: 5s     # how often configured devices are read
 interface: eth0       # network interface to discover/receive Speedwire on
 discovery:
     password: "0000"    # inverter login password used during discovery
+    interval: 5m        # how often a discovery cycle may run (see Discovery traffic)
+    window: 3s          # how long a single discovery cycle lasts
 metrics:
     energyMeterPrefix: smartmeter       # metric name prefix for energy meters
     inverterPrefix: sunny_inverter      # metric name prefix for inverters
@@ -79,6 +81,7 @@ devices: # only listed serials are exported; labels are attached verbatim
 | `fetchInterval`                                        | Poll interval for reading each configured device.           |
 | `interface`                                            | Interface used to discover and receive Speedwire multicast. |
 | `discovery.password`                                   | Password used to log in to inverters during discovery.      |
+| `discovery.interval` / `discovery.window`              | How often a discovery cycle may run, and how long it lasts. |
 | `metrics.energyMeterPrefix` / `metrics.inverterPrefix` | Metric name prefixes per device type.                       |
 | `metrics.info`                                         | Emit the optional `<prefix>_info` metric.                   |
 | `devices[].serial` / `devices[].labels`                | Which devices to export and the constant labels to attach.  |
@@ -232,6 +235,22 @@ only intermittently.
 The exporter must have layer-2 access to the SMA Speedwire multicast group
 `239.12.255.254:9522` on the configured `interface`. In Kubernetes this typically means attaching the pod to the VLAN
 carrying the SMA traffic (e.g. via Multus/macvlan) so the multicast datagrams are received.
+
+### Discovery traffic
+
+Finding devices means broadcasting an SMA discovery request to
+`239.12.255.254:9522` — a packet every 500 ms for the length of `discovery.window`. Every
+Speedwire device on that group receives them, and not all third-party implementations ignore
+packets they do not understand; some log parse errors for each one.
+
+The exporter therefore **skips discovery entirely while every configured device is being read
+successfully**, which is the steady state. A cycle only runs when a configured device has
+never answered or has gone silent for longer than `discovery.interval` — i.e. when it may have
+rebooted or changed address. In a working installation that means one burst at startup and
+none afterwards.
+
+`readout` and each request to `/devices` run their own cycle on demand, which is expected: you
+asked to look at the wire.
 
 ## Building from source
 

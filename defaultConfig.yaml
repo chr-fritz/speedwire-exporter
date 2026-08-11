@@ -8,6 +8,11 @@ fetchInterval: 5s
 interface: eth0
 discovery:
     password: "0000"
+    # Discovery broadcasts SMA discovery requests to the shared Speedwire multicast group, so
+    # it is skipped entirely while every configured device is being read. These bound the
+    # cycles that do run, when a device has never answered or has gone silent.
+    interval: 5m
+    window: 3s
 metrics:
     energyMeterPrefix: smartmeter
     inverterPrefix: sunny_inverter
