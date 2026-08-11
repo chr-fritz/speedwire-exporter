@@ -42,6 +42,10 @@ func readout(cmd *cobra.Command, _ []string) {
 		slog.With("err", err).Warn("Can not read configuration")
 	}
 
+	// readout is the command people run when discovery is not working, so sunny's own view of
+	// the wire is exactly what they need at -v debug.
+	speedwire.InstallSunnyLogger(slog.Default())
+
 	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer cancel()
 

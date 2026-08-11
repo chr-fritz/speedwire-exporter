@@ -220,6 +220,13 @@ OpenTelemetry tracing is set up via the OTel SDK autoexport; configure it with t
 variables (e.g.
 `OTEL_EXPORTER_OTLP_ENDPOINT`). Request tracing is applied to the HTTP handlers.
 
+The Speedwire layer's own trace output is logged at `logging.level: debug`: every datagram
+sent and received, malformed packets, and which devices discovery found or skipped. That is
+one line per datagram on a live segment, so use it to answer "does anything reach us at all?"
+rather than leaving it on. `debug-4` additionally logs the packets that were *dropped* (failed
+UDP reads, receivers whose channel was full), which is what to reach for when values arrive
+only intermittently.
+
 ## Network requirements
 
 The exporter must have layer-2 access to the SMA Speedwire multicast group

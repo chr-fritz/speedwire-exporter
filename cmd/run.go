@@ -79,6 +79,12 @@ func run(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Route sunny's internal trace output into slog. Without this it goes to a NopeLogger and
+	// the whole Speedwire layer - received packets, discovery results, parse errors - is
+	// invisible, which makes "the exporter receives nothing" impossible to tell apart from
+	// "the exporter is fine".
+	speedwire.InstallSunnyLogger(slog.Default())
+
 	listener := speedwire.NewListener(&cfg, col)
 	if err = registry.Register(newFreshnessCollector(listener.LastSuccessfulReads)); err != nil {
 		slog.With("err", err).Error("can not register freshness collector")
