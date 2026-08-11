@@ -30,6 +30,39 @@ func (l *recvCountingLogger) Printf(format string, _ ...interface{}) {
 	}
 }
 
+var (
+	leakTestOnce   sync.Once
+	leakTestLogger *recvCountingLogger
+)
+
+// setupLeakTestGlobals shortens discovery so a single window happens well inside the test and
+// installs a logger that counts received packets. It writes those package globals exactly
+// once and never restores them.
+//
+// That is deliberate. This test intentionally leaves a discovery window's worth of NewDevice
+// goroutines draining - each retries for 3s against a source that never completes the
+// handshake - so they keep reading discoveryWindow/discoveryInterval (in discoverLoop) and
+// sunny.Log (on every packet sent or received) for minutes after the test returns. All of
+// these are plain, unsynchronised package variables, so restoring them afterwards, or setting
+// them again on a repeat run (go test -count=2), is a data race that -race reports. Waiting
+// for the drain instead would add ~10 minutes to the suite. Writing them once is harmless:
+// this is the only test that runs a Listener, and recvCountingLogger merely counts "recv "
+// lines.
+//
+// The rule this encodes also holds in production: sunny.Log must be written before any
+// listener runs and never again, which is what InstallSunnyLogger does at startup.
+func setupLeakTestGlobals() *recvCountingLogger {
+	leakTestOnce.Do(func() {
+		discoveryWindow = 400 * time.Millisecond
+		discoveryInterval = time.Hour
+
+		leakTestLogger = &recvCountingLogger{}
+		sunny.Log = leakTestLogger
+		sunny.EnableDetailedPacketLogging(false)
+	})
+	return leakTestLogger
+}
+
 // TestListenerDiscoveryDoesNotLeakGoroutines guards against unbounded goroutine growth caused by
 // running sunny's DiscoverDevices continuously. A device that keeps multicasting valid Speedwire
 // packets whose NewDevice handshake never completes made the listener spawn (and pile up) a
@@ -44,16 +77,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 		t.Skipf("no %s: %v", iface, err)
 	}
 
-	// Shorten discovery so a single window happens well inside the test.
-	origWindow, origInterval := discoveryWindow, discoveryInterval
-	discoveryWindow = 400 * time.Millisecond
-	discoveryInterval = time.Hour
-	defer func() { discoveryWindow, discoveryInterval = origWindow, origInterval }()
-
-	logger := &recvCountingLogger{}
-	sunny.Log = logger
-	sunny.EnableDetailedPacketLogging(false)
-	defer func() { sunny.Log = new(sunny.NopeLogger) }()
+	logger := setupLeakTestGlobals()
 
 	// Control receiver: joining the group on lo0 is what makes the loopback multicast reliably
 	// deliver to other local group members (including the listener's socket) on some platforms.
