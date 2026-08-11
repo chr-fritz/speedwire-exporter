@@ -53,6 +53,14 @@ func run(cmd *cobra.Command, _ []string) error {
 		slog.With("err", err).Error("Can not read configuration")
 		return err
 	}
+	// A user-mounted config replaces the shipped defaultConfig.yaml wholesale, so any key it
+	// omits arrives as a zero value. Fill those in, then refuse to start on values that are
+	// present but unusable rather than failing later in a goroutine.
+	cfg.ApplyDefaults()
+	if err := cfg.Validate(); err != nil {
+		slog.With("err", err).Error("invalid configuration")
+		return err
+	}
 
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()

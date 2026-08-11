@@ -70,11 +70,16 @@ func TestNeedsDiscoveryWithoutConfiguredDevices(t *testing.T) {
 	assert.False(t, l.needsDiscovery(time.Now()))
 }
 
+// TestDiscoverySettingsFallBackToDefaults keeps a programmatically constructed Listener safe
+// even though production configs are defaulted at load time: a zero interval would make the
+// loop rediscover without pause, and a zero window would make every cycle a no-op.
 func TestDiscoverySettingsFallBackToDefaults(t *testing.T) {
-	l := testListener(t)
+	l := NewListener(&config.Config{}, collector.NewCollector())
 
-	assert.Equal(t, discoveryInterval, l.discoveryInterval())
-	assert.Equal(t, discoveryWindow, l.discoveryWindow())
+	assert.Equal(t, config.DefaultDiscoveryInterval, l.discoveryInterval())
+	assert.Equal(t, config.DefaultDiscoveryWindow, l.discoveryWindow())
+	assert.Equal(t, config.DefaultFetchInterval, l.fetchInterval(),
+		"a zero fetch interval would panic time.NewTicker")
 }
 
 func TestDiscoverySettingsAreConfigurable(t *testing.T) {

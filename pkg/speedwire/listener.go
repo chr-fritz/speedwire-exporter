@@ -53,15 +53,6 @@ type meterReader interface {
 // into coin flips. Overrunning a tick is harmless: time.Ticker drops missed ticks.
 const readTimeout = 3 * time.Second
 
-// discoveryWindow bounds a single discovery cycle, mirroring Discover and sunny's own
-// SimpleDiscoverDevices idiom. discoveryInterval is how often the device list is refreshed.
-//
-// These are package variables (not constants) only so tests can shorten them.
-var (
-	discoveryWindow   = 3 * time.Second
-	discoveryInterval = 5 * time.Minute
-)
-
 // NewListener creates a Listener that reads configured devices on cfg.FetchInterval and observes
 // their values via col.
 func NewListener(cfg *config.Config, col *collector.Collector) *Listener {
@@ -81,7 +72,7 @@ func (l *Listener) Run(ctx context.Context) {
 	devs := make(chan *sunny.Device, 10)
 	go l.discoverLoop(ctx, conn, devs)
 
-	ticker := time.NewTicker(l.cfg.FetchInterval)
+	ticker := time.NewTicker(l.fetchInterval())
 	defer ticker.Stop()
 	known := map[uint32]*sunny.Device{}
 
@@ -117,21 +108,32 @@ func (l *Listener) Run(ctx context.Context) {
 	}
 }
 
-// discoveryInterval returns how often a discovery cycle may run, and discoveryWindow how long
-// a single cycle lasts. A zero configured value means "not set" and falls back to the
-// built-in default, so a config that omits them cannot reduce either to nothing.
+// fetchInterval, discoveryInterval and discoveryWindow read their setting from the
+// configuration, falling back to the package default when it is not positive.
+//
+// Configurations loaded through the commands are defaulted and validated at startup, so in
+// practice these always return the configured value. The fallbacks exist for Listeners built
+// programmatically - a zero fetch interval panics time.NewTicker, and a zero discovery
+// interval would make the loop rediscover without pause.
+func (l *Listener) fetchInterval() time.Duration {
+	if l.cfg.FetchInterval > 0 {
+		return l.cfg.FetchInterval
+	}
+	return config.DefaultFetchInterval
+}
+
 func (l *Listener) discoveryInterval() time.Duration {
 	if l.cfg.Discovery.Interval > 0 {
 		return l.cfg.Discovery.Interval
 	}
-	return discoveryInterval
+	return config.DefaultDiscoveryInterval
 }
 
 func (l *Listener) discoveryWindow() time.Duration {
 	if l.cfg.Discovery.Window > 0 {
 		return l.cfg.Discovery.Window
 	}
-	return discoveryWindow
+	return config.DefaultDiscoveryWindow
 }
 
 // needsDiscovery reports whether a discovery cycle is worth running.

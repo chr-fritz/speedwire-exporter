@@ -35,27 +35,23 @@ var (
 	leakTestLogger *recvCountingLogger
 )
 
-// setupLeakTestGlobals shortens discovery so a single window happens well inside the test and
-// installs a logger that counts received packets. It writes those package globals exactly
-// once and never restores them.
+// installCountingLogger points sunny's package-level logger at a packet counter, exactly once
+// and without ever restoring it.
 //
 // That is deliberate. This test intentionally leaves a discovery window's worth of NewDevice
 // goroutines draining - each retries for 3s against a source that never completes the
-// handshake - so they keep reading discoveryWindow/discoveryInterval (in discoverLoop) and
-// sunny.Log (on every packet sent or received) for minutes after the test returns. All of
-// these are plain, unsynchronised package variables, so restoring them afterwards, or setting
-// them again on a repeat run (go test -count=2), is a data race that -race reports. Waiting
-// for the drain instead would add ~10 minutes to the suite. Writing them once is harmless:
-// this is the only test that runs a Listener, and recvCountingLogger merely counts "recv "
-// lines.
+// handshake - so they keep reading sunny.Log, on every packet sent or received, for minutes
+// after the test returns. sunny.Log is a plain, unsynchronised package variable, so restoring
+// it afterwards, or setting it again on a repeat run (go test -count=2), is a data race that
+// -race reports. Waiting for the drain instead would add ~10 minutes to the suite. Writing it
+// once is harmless: recvCountingLogger merely counts "recv " lines.
 //
 // The rule this encodes also holds in production: sunny.Log must be written before any
 // listener runs and never again, which is what InstallSunnyLogger does at startup.
-func setupLeakTestGlobals() *recvCountingLogger {
+//
+// Discovery timings need no such treatment - they come from the Listener's configuration.
+func installCountingLogger() *recvCountingLogger {
 	leakTestOnce.Do(func() {
-		discoveryWindow = 400 * time.Millisecond
-		discoveryInterval = time.Hour
-
 		leakTestLogger = &recvCountingLogger{}
 		sunny.Log = leakTestLogger
 		sunny.EnableDetailedPacketLogging(false)
@@ -77,7 +73,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 		t.Skipf("no %s: %v", iface, err)
 	}
 
-	logger := setupLeakTestGlobals()
+	logger := installCountingLogger()
 
 	// Control receiver: joining the group on lo0 is what makes the loopback multicast reliably
 	// deliver to other local group members (including the listener's socket) on some platforms.
@@ -130,10 +126,12 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 
 	// A configured device that is never found is what keeps discovery running: cycles are
 	// skipped while every configured device is being read, and skipped entirely when none is
-	// configured, so without this the leak path under test would never be entered.
+	// configured, so without this the leak path under test would never be entered. The short
+	// window and long interval give exactly one discovery cycle inside the test.
 	cfg := &config.Config{
 		Interface:     iface,
 		FetchInterval: time.Second,
+		Discovery:     config.DiscoveryConfig{Window: 400 * time.Millisecond, Interval: time.Hour},
 		Devices:       []config.DeviceConfig{{Serial: 1234567890}},
 	}
 	l := NewListener(cfg, collector.NewCollector())

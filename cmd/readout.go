@@ -41,6 +41,10 @@ func readout(cmd *cobra.Command, _ []string) {
 	if err := viper.Unmarshal(&cfg); err != nil {
 		slog.With("err", err).Warn("Can not read configuration")
 	}
+	// Only defaults, no Validate: readout is a diagnostic tool that needs nothing but the
+	// interface and the discovery password, and should still run when the parts it does not
+	// touch - metric prefixes, fetch interval - are misconfigured.
+	cfg.ApplyDefaults()
 
 	// readout is the command people run when discovery is not working, so sunny's own view of
 	// the wire is exactly what they need at -v debug.

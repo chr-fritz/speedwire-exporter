@@ -90,6 +90,16 @@ devices: # only listed serials are exported; labels are attached verbatim
 > keys*. Differing label-key sets across same-type devices produce metric series
 > with inconsistent dimensions, which Prometheus rejects on scrape.
 
+Every key above except `interface` and `devices` has a built-in default, so a partial
+configuration is fine — you only need to set what you want to change. `defaultConfig.yaml`
+documents the defaults but does not supply them: the image ships it at
+`/etc/speedwire-exporter/config.yaml`, which is a `VOLUME`, so a mounted config replaces it
+wholesale.
+
+Values that are present but unusable (a non-positive duration, an empty metric prefix, a
+`discovery.window` not shorter than `discovery.interval`) make `run` exit at startup with all
+of the problems listed at once, rather than being silently replaced or failing later.
+
 ### Environment variables
 
 Any config key can be overridden via an environment variable prefixed with
