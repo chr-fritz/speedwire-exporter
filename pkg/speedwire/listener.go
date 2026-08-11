@@ -44,6 +44,13 @@ type meterReader interface {
 	IsEnergyMeter() bool
 }
 
+// knownDevice is a device the listener holds on to between reads: it is read on every tick
+// and released when re-discovery replaces it.
+type knownDevice interface {
+	meterReader
+	Close()
+}
+
 // readTimeout bounds a single device read, mirroring the deadline sunny's own ctx-less
 // Device.GetValues applies.
 //
@@ -74,7 +81,7 @@ func (l *Listener) Run(ctx context.Context) {
 
 	ticker := time.NewTicker(l.fetchInterval())
 	defer ticker.Stop()
-	known := map[uint32]*sunny.Device{}
+	known := map[uint32]knownDevice{}
 
 	for {
 		select {
@@ -93,9 +100,7 @@ func (l *Listener) Run(ctx context.Context) {
 			}
 			known[serial] = dev
 		case <-ticker.C:
-			for serial, dev := range known {
-				l.read(ctx, serial, dev)
-			}
+			l.readAll(ctx, known)
 		case <-ctx.Done():
 			// Drain devs until discoverLoop closes it. A discovery window in flight may have
 			// per-IP goroutines blocked on their `devs <- device` send; DiscoverDevices only
@@ -207,6 +212,34 @@ func (l *Listener) LastSuccessfulReads() map[uint32]time.Time {
 		reads[d.Serial] = l.lastReads[d.Serial]
 	}
 	return reads
+}
+
+// readAll reads every known device once, concurrently, and returns when all of them are done.
+//
+// Concurrency is what keeps one unresponsive device from setting the pace for the rest: reads
+// are bounded by readTimeout, so read them one after another and a tick costs the sum of those
+// deadlines instead of the longest single one. With an energy meter and an inverter
+// configured, a dead inverter would otherwise spend 3s of every tick before the meter is read
+// at all - and once the total exceeds the fetch interval, ticks start being dropped and the
+// healthy device is sampled at a fraction of the configured rate.
+//
+// Waiting for all of them before returning is deliberate: it keeps a slow round from
+// overlapping the next one, exactly as the sequential version did. time.Ticker drops the ticks
+// that fall in between.
+//
+// Concurrent reads of *distinct* devices are safe: each holds its own receiver channel, the
+// shared UDP socket tolerates concurrent writes, and the collector, the unmapped-value set and
+// the freshness map are all synchronised.
+func (l *Listener) readAll(ctx context.Context, known map[uint32]knownDevice) {
+	var wg sync.WaitGroup
+	for serial, dev := range known {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			l.read(ctx, serial, dev)
+		}()
+	}
+	wg.Wait()
 }
 
 func (l *Listener) read(ctx context.Context, serial uint32, dev meterReader) {
