@@ -53,10 +53,16 @@ func readout(cmd *cobra.Command, _ []string) {
 	ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 	defer cancel()
 
+	// Discover returns what it collected alongside any error, so print the devices that did
+	// answer before reporting the failure. Throwing them away is the opposite of what this
+	// command is for, and a deadline is the expected error when some device on the segment is
+	// unresponsive.
 	devices, err := speedwire.Discover(ctx, cfg.Interface, cfg.Discovery.Password)
 	if err != nil {
-		fmt.Println("discovery error:", err)
-		return
+		fmt.Println("discovery did not finish:", err)
+		if len(devices) > 0 {
+			fmt.Printf("the %d device(s) below were found before that; the list may be incomplete\n", len(devices))
+		}
 	}
 	for _, d := range devices {
 		fmt.Printf("device %d @ %s (energyMeter=%t)\n", d.Serial, d.Address, d.IsEnergyMeter)

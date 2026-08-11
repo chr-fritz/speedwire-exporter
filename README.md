@@ -137,6 +137,12 @@ speedwire-exporter run --config /etc/speedwire-exporter/config.yaml
 |-------------------|--------------------------------------------------------------------------------------------------|
 | `/metrics`        | Prometheus metrics (OpenMetrics enabled).                                                        |
 | `/devices`        | JSON dump of all discovered devices and their current values — independent of the configuration. |
+
+`/devices` is bounded to 10 s. Discovery itself takes `discovery.window`, and every
+unresponsive device costs a bounded read on top, so on a busy segment the budget can run out.
+When it does, the devices found so far are still returned and the response carries
+`X-Speedwire-Partial: true`; the body stays a plain JSON array. Only a completely empty result
+produces an error.
 | `/live`, `/ready` | Liveness / readiness health checks.                                                              |
 
 ### Discovering devices

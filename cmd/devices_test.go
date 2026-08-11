@@ -61,3 +61,52 @@ func TestDevicesHandlerReturnsJSON(t *testing.T) {
 	assert.Equal(t, info.Unit, value["unit"])
 	assert.EqualValues(t, 15.4, value["value"])
 }
+
+// TestDevicesHandlerServesDevicesFoundBeforeTheDeadline is the point of the endpoint: it exists
+// so you can find out what is on the wire in order to write the configuration. Discovery plus
+// a bounded read per device can exceed the handler's budget when several devices are
+// unresponsive, and turning that into a bare 500 threw away every device that did answer.
+func TestDevicesHandlerServesDevicesFoundBeforeTheDeadline(t *testing.T) {
+	h := newDevicesHandler(func(ctx context.Context) ([]speedwire.DiscoveredDevice, error) {
+		return []speedwire.DiscoveredDevice{
+			{Serial: 42, Address: "1.2.3.4:9522", IsEnergyMeter: true},
+		}, context.DeadlineExceeded
+	})
+
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodGet, "/devices", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "true", rec.Header().Get(partialHeader),
+		"the response must say that the list may be incomplete")
+
+	var out []map[string]interface{}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	require.Len(t, out, 1)
+	assert.EqualValues(t, 42, out[0]["serial"])
+}
+
+// TestDevicesHandlerFailsWhenNothingWasFound keeps a genuine failure a failure: with no devices
+// at all there is nothing useful to serve, so the error is the answer.
+func TestDevicesHandlerFailsWhenNothingWasFound(t *testing.T) {
+	h := newDevicesHandler(func(ctx context.Context) ([]speedwire.DiscoveredDevice, error) {
+		return nil, context.DeadlineExceeded
+	})
+
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodGet, "/devices", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestDevicesHandlerDoesNotMarkCompleteResultsAsPartial(t *testing.T) {
+	h := newDevicesHandler(func(ctx context.Context) ([]speedwire.DiscoveredDevice, error) {
+		return []speedwire.DiscoveredDevice{{Serial: 42}}, nil
+	})
+
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodGet, "/devices", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Empty(t, rec.Header().Get(partialHeader))
+}

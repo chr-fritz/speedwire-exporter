@@ -17,6 +17,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -41,6 +42,11 @@ type deviceView struct {
 	Values        []deviceValueView `json:"values"`
 }
 
+// partialHeader marks a response whose device list may be incomplete. The body stays a plain
+// JSON array so that existing consumers keep working; a client that ignores this header simply
+// sees the devices that were found, which is strictly better than the error it used to get.
+const partialHeader = "X-Speedwire-Partial"
+
 // newDevicesHandler returns an http.HandlerFunc that discovers all Speedwire devices reachable via the given
 // DiscoverFunc and renders them as JSON, independent of any configured device filtering.
 func newDevicesHandler(discover DiscoverFunc) http.HandlerFunc {
@@ -48,10 +54,20 @@ func newDevicesHandler(discover DiscoverFunc) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
+		// Discovery returns what it managed to collect alongside any error, and a deadline is
+		// the expected error here: discovery itself takes 3s and each unresponsive device costs
+		// a bounded read on top. Serving the devices that did answer is the whole point of this
+		// endpoint - you are using it to find out what is on the wire. Only an empty result
+		// leaves nothing worth serving.
 		devices, err := discover(ctx)
-		if err != nil {
+		if err != nil && len(devices) == 0 {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if err != nil {
+			slog.With("err", err, "found", len(devices)).
+				Warn("device discovery did not finish, serving a partial list")
+			w.Header().Set(partialHeader, "true")
 		}
 
 		views := make([]deviceView, 0, len(devices))
