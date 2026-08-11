@@ -32,7 +32,26 @@ type Listener struct {
 	cfg          *config.Config
 	col          *collector.Collector
 	seenUnmapped sync.Map // sunny.ValueID -> struct{}
+
+	freshnessMu sync.RWMutex
+	lastReads   map[uint32]time.Time // serial -> time of its last successful read
 }
+
+// meterReader is the part of *sunny.Device that read depends on. It exists so the read path
+// can be exercised without a Speedwire network.
+type meterReader interface {
+	GetValuesCtx(ctx context.Context) (map[sunny.ValueID]interface{}, error)
+	IsEnergyMeter() bool
+}
+
+// readTimeout bounds a single device read, mirroring the deadline sunny's own ctx-less
+// Device.GetValues applies.
+//
+// It is deliberately not tied to FetchInterval. An energy meter read cannot be served from
+// buffered data - sunny clears the receiver channel first and then waits for the next
+// datagram - so a deadline near the meter's ~1s multicast period would turn healthy reads
+// into coin flips. Overrunning a tick is harmless: time.Ticker drops missed ticks.
+const readTimeout = 3 * time.Second
 
 // discoveryWindow bounds a single discovery cycle, mirroring Discover and sunny's own
 // SimpleDiscoverDevices idiom. discoveryInterval is how often the device list is refreshed.
@@ -122,17 +141,49 @@ func (l *Listener) discoverLoop(ctx context.Context, conn *sunny.Connection, dev
 	}
 }
 
-func (l *Listener) read(ctx context.Context, serial uint32, dev *sunny.Device) {
+// LastSuccessfulReads returns, for every configured device, when it was last read
+// successfully. Devices that have never answered are included with the zero time, so a device
+// that never came up at all is visible rather than simply missing. It backs the
+// speedwire_last_successful_read_timestamp_seconds metric.
+func (l *Listener) LastSuccessfulReads() map[uint32]time.Time {
+	l.freshnessMu.RLock()
+	defer l.freshnessMu.RUnlock()
+
+	reads := make(map[uint32]time.Time, len(l.cfg.Devices))
+	for _, d := range l.cfg.Devices {
+		reads[d.Serial] = l.lastReads[d.Serial]
+	}
+	return reads
+}
+
+func (l *Listener) read(ctx context.Context, serial uint32, dev meterReader) {
 	labels, ok := l.cfg.LabelsFor(serial)
 	if !ok {
 		slog.With("serial", serial).Debug("skipping unconfigured device")
 		return
 	}
-	values, err := dev.GetValuesCtx(ctx)
+	// The read MUST have its own deadline. ctx lives as long as the process, and sunny's
+	// GetValuesCtx has no deadline of its own for energy meters: it blocks on the device's
+	// receiver channel until the context it was handed is done. Passing ctx straight through
+	// therefore turns one missed multicast datagram into a permanent hang of Run's single
+	// event loop - no further reads, no discovery handling, no log output, until restart.
+	readCtx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
+
+	values, err := dev.GetValuesCtx(readCtx)
 	if err != nil {
 		slog.With("serial", serial, "err", err).Warn("can not read values")
 		return
 	}
+	if len(values) == 0 {
+		// sunny's inverter path collects one request group at a time, skips every group that
+		// errors and returns a nil error regardless - so "no values at all" arrives here as a
+		// success. Counting it as one would keep the freshness signal alive for a device that
+		// is in fact answering nothing.
+		slog.With("serial", serial).Warn("device returned no values")
+		return
+	}
+	l.recordSuccessfulRead(serial)
 	serialStr := strconv.FormatUint(uint64(serial), 10)
 
 	isEM := dev.IsEnergyMeter()
@@ -140,6 +191,16 @@ func (l *Listener) read(ctx context.Context, serial uint32, dev *sunny.Device) {
 	for _, o := range deviceObservations(isEM, values, l.cfg.Metrics) {
 		l.col.Observe(o.prefix, serialStr, o.snaps, labels)
 	}
+}
+
+// recordSuccessfulRead marks now as the last time the given device answered with values.
+func (l *Listener) recordSuccessfulRead(serial uint32) {
+	l.freshnessMu.Lock()
+	defer l.freshnessMu.Unlock()
+	if l.lastReads == nil {
+		l.lastReads = make(map[uint32]time.Time)
+	}
+	l.lastReads[serial] = time.Now()
 }
 
 // observation is a single pending Collector.Observe call: the metric prefix and the

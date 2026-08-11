@@ -78,7 +78,12 @@ func run(cmd *cobra.Command, _ []string) error {
 		slog.With("err", err).Error("can not register collector")
 		return err
 	}
+
 	listener := speedwire.NewListener(&cfg, col)
+	if err = registry.Register(newFreshnessCollector(listener.LastSuccessfulReads)); err != nil {
+		slog.With("err", err).Error("can not register freshness collector")
+		return err
+	}
 	go listener.Run(ctx)
 
 	return httpServer.Run(ctx)

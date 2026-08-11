@@ -194,6 +194,26 @@ Power is **signed** (feed-in negative); energy counters are split by direction.
 `grid_*`, `consumption_*`,
 `self_consumption_*`, `battery_*`) require an inverter that provides them (e.g. SMA STP … SE hybrid inverters).
 
+### Exporter health (`speedwire_*`)
+
+| Metric                                             | Type  | Unit | Labels   |
+|----------------------------------------------------|-------|------|----------|
+| `speedwire_last_successful_read_timestamp_seconds` | gauge | s    | `serial` |
+
+Device values expire from the cache 30 s after readings stop, so an exporter that has lost the
+multicast stream serves an empty `/metrics` — indistinguishable from one that is simply idle.
+This gauge keeps reporting, one series per configured device, and makes that alertable. A
+device that has never been read reports `0`, so a device that never came up at all stays
+visible rather than silently absent — which is why the `== 0` arm below is needed:
+
+```promql
+speedwire_last_successful_read_timestamp_seconds == 0
+  or time() - speedwire_last_successful_read_timestamp_seconds > 300
+```
+
+Give the rule a `for:` long enough to cover startup, since every device reports `0` until its
+first successful read.
+
 ## Observability
 
 OpenTelemetry tracing is set up via the OTel SDK autoexport; configure it with the standard `OTEL_*` environment

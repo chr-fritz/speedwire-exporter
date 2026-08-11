@@ -17,6 +17,7 @@ package speedwire
 import (
 	"context"
 	"log/slog"
+	"net"
 	"time"
 
 	"gitlab.com/bboehmke/sunny"
@@ -28,6 +29,40 @@ type DiscoveredDevice struct {
 	Address       string
 	IsEnergyMeter bool
 	Values        map[sunny.ValueID]interface{}
+}
+
+// discoveredReader is the part of *sunny.Device that readDiscovered depends on. It exists so
+// the readout path can be exercised without a Speedwire network.
+type discoveredReader interface {
+	meterReader
+	SerialNumber() uint32
+	Address() *net.UDPAddr
+	Close()
+}
+
+// readDiscovered reads dev's current values under its own deadline and releases the receiver
+// channel the device registered on the shared, process-lifetime connection in NewDevice.
+//
+// The deadline is not optional: sunny's GetValuesCtx has none of its own for energy meters,
+// so handing it the caller's context would let one unresponsive device consume the entire
+// budget of whoever called Discover - the /devices handler's 10s, or readout's. A device that
+// does not answer in time is still reported, just without values.
+func readDiscovered(ctx context.Context, dev discoveredReader, timeout time.Duration) DiscoveredDevice {
+	readCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	values, err := dev.GetValuesCtx(readCtx)
+	if err != nil {
+		slog.Warn("failed to read values from device", "serial", dev.SerialNumber(), "err", err)
+	}
+	dev.Close()
+
+	return DiscoveredDevice{
+		Serial:        dev.SerialNumber(),
+		Address:       dev.Address().String(),
+		IsEnergyMeter: dev.IsEnergyMeter(),
+		Values:        values,
+	}
 }
 
 // Discover finds all Speedwire devices on the given interface and reads their current values once.
@@ -54,21 +89,7 @@ func Discover(ctx context.Context, iface, password string) ([]DiscoveredDevice, 
 	go func() {
 		defer close(done)
 		for dev := range devs {
-			values, err := dev.GetValuesCtx(ctx)
-			if err != nil {
-				slog.Warn("failed to read values from device", "serial", dev.SerialNumber(), "err", err)
-			}
-			// Each discovered device registers a receiver channel on the shared,
-			// cached connection in NewDevice. We only need the device for this
-			// one-shot read, so unregister it now; otherwise every Discover call
-			// would leak a receiver registration on the long-lived connection.
-			dev.Close()
-			result = append(result, DiscoveredDevice{
-				Serial:        dev.SerialNumber(),
-				Address:       dev.Address().String(),
-				IsEnergyMeter: dev.IsEnergyMeter(),
-				Values:        values,
-			})
+			result = append(result, readDiscovered(ctx, dev, readTimeout))
 		}
 	}()
 
