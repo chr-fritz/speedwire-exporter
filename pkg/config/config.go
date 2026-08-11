@@ -33,8 +33,15 @@ type MetricsConfig struct {
 
 type DeviceConfig struct {
 	Serial uint32
-	Labels map[string]string
+	// Address pins the device to a known host, so it can be opened directly instead of being
+	// looked for with a multicast discovery broadcast. Without a port - Speedwire is always
+	// on 9522.
+	Address string
+	Labels  map[string]string
 }
+
+// IsPinned reports whether this device is reached by address instead of by discovery.
+func (d DeviceConfig) IsPinned() bool { return d.Address != "" }
 
 // LabelsFor returns the configured labels for the given serial and whether it is configured.
 func (c Config) LabelsFor(serial uint32) (map[string]string, bool) {

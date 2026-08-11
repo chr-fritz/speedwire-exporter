@@ -76,19 +76,31 @@ func (l *Listener) Run(ctx context.Context) {
 		return
 	}
 
-	devs := make(chan *sunny.Device, 10)
-	go l.discoverLoop(ctx, conn, devs)
+	devs := make(chan acquiredDevice, 10)
+	go l.acquireLoop(ctx, dialer(conn), func(c context.Context, out chan<- acquiredDevice) {
+		l.discoverOnce(c, conn, out)
+	}, devs)
 
 	ticker := time.NewTicker(l.fetchInterval())
 	defer ticker.Stop()
 	known := map[uint32]knownDevice{}
+	// Every handle holds a receiver registration on the shared, process-lifetime connection,
+	// which only Close releases.
+	defer func() {
+		for _, dev := range known {
+			dev.Close()
+		}
+	}()
 
 	for {
 		select {
-		case dev := <-devs:
-			// discoverLoop closes devs on shutdown, yielding a nil dev; skip it so we never
-			// insert a nil device into known.
-			if dev == nil {
+		case dev, open := <-devs:
+			if !open {
+				// acquireLoop has finished. Drop the channel rather than spinning on it: a
+				// closed channel is always ready to receive, so continuing to select on it
+				// would busy-loop. A nil channel blocks forever, which leaves the ticker as
+				// the only live case and keeps known devices being read.
+				devs = nil
 				continue
 			}
 			serial := dev.SerialNumber()
@@ -102,11 +114,18 @@ func (l *Listener) Run(ctx context.Context) {
 		case <-ticker.C:
 			l.readAll(ctx, known)
 		case <-ctx.Done():
-			// Drain devs until discoverLoop closes it. A discovery window in flight may have
+			// Drain devs until acquireLoop closes it. A discovery window in flight may have
 			// per-IP goroutines blocked on their `devs <- device` send; DiscoverDevices only
 			// returns (via wg.Wait()) once those sends are received. Draining unblocks them so
-			// discoverLoop can finish and close(devs).
-			for range devs {
+			// acquireLoop can finish and close(devs). Release what we drain: those handles
+			// never make it into known, so nothing else would.
+			//
+			// devs is nil if the close was already observed above, and ranging over a nil
+			// channel blocks forever - there is simply nothing left to drain in that case.
+			if devs != nil {
+				for dev := range devs {
+					dev.Close()
+				}
 			}
 			return
 		}
@@ -153,21 +172,32 @@ func (l *Listener) discoveryWindow() time.Duration {
 // or one that has gone silent for longer than a full discovery period and may have changed
 // address or rebooted. With nothing configured at all there is nothing to find either, and
 // staying quiet on the wire beats announcing ourselves for no reason.
+//
+// Devices with a pinned address are never a reason to discover, even when they cannot be
+// reached. They are dialled directly and retried there, and reported through the freshness
+// metric and a warning. Falling back to discovery for them would quietly restore the broadcast
+// traffic that pinning exists to avoid, and paper over the configuration error causing it.
 func (l *Listener) needsDiscovery(now time.Time) bool {
 	reads := l.LastSuccessfulReads()
-	if len(reads) == 0 {
-		return false
-	}
-	for _, last := range reads {
-		if last.IsZero() || now.Sub(last) >= l.discoveryInterval() {
+	for _, cfg := range l.cfg.Devices {
+		if cfg.IsPinned() {
+			continue
+		}
+		if l.isStale(reads[cfg.Serial], now) {
 			return true
 		}
 	}
 	return false
 }
 
-// discoverLoop repeatedly runs a bounded discovery cycle, feeding discovered devices into devs,
-// until ctx is done. Discovery must NOT run continuously: sunny's DiscoverDevices spawns a
+// acquireLoop keeps every configured device supplied with a usable handle, feeding them into
+// devs until ctx is done.
+//
+// There are two ways to obtain one. A device with a configured address is dialled directly,
+// which is a unicast handshake with that host. Everything else has to be found with a
+// discovery cycle, which is a burst of broadcasts to the shared Speedwire multicast group.
+//
+// Discovery must NOT run continuously: sunny's DiscoverDevices spawns a
 // goroutine for every received packet and re-attempts NewDevice on every packet from any source
 // whose handshake never completes (for example this host's own multicast discovery requests
 // looped back, or any other Speedwire-speaking device that is not a readable inverter/energy
@@ -180,15 +210,25 @@ func (l *Listener) needsDiscovery(now time.Time) bool {
 // which is the steady state. That matters beyond this process: a cycle broadcasts an SMA
 // discovery request to the shared multicast group every 500ms for the whole window, and other
 // Speedwire clients on that group have to cope with each one.
-func (l *Listener) discoverLoop(ctx context.Context, conn *sunny.Connection, devs chan *sunny.Device) {
+// dial and discover are parameters rather than being derived from a connection so that the
+// order and the conditions of the two acquisition paths can be tested on their own; Run passes
+// the sunny-backed implementations.
+func (l *Listener) acquireLoop(
+	ctx context.Context,
+	dial deviceDialer,
+	discover func(context.Context, chan<- acquiredDevice),
+	devs chan<- acquiredDevice,
+) {
 	defer close(devs)
 	for {
+		// Pinned devices first: dialling them is unicast and costs nothing on the group, and it
+		// is what lets needsDiscovery stay false for a fully pinned configuration.
+		l.dialPinned(ctx, dial, devs)
+
 		if l.needsDiscovery(time.Now()) {
-			discoverCtx, cancel := context.WithTimeout(ctx, l.discoveryWindow())
-			conn.DiscoverDevices(discoverCtx, devs, l.cfg.Discovery.Password)
-			cancel()
+			discover(ctx, devs)
 		} else {
-			slog.Debug("skipping Speedwire discovery, every configured device is being read")
+			slog.Debug("skipping Speedwire discovery, every configured device is pinned or being read")
 		}
 
 		select {
@@ -197,6 +237,34 @@ func (l *Listener) discoverLoop(ctx context.Context, conn *sunny.Connection, dev
 		case <-time.After(l.discoveryInterval()):
 		}
 	}
+}
+
+// discoverOnce runs a single bounded discovery cycle, forwarding what it finds to devs.
+//
+// sunny hands its results back over a channel of its own concrete type, so the forwarding
+// goroutine exists to widen them to acquiredDevice. It also keeps the shutdown behaviour of
+// DiscoverDevices intact: that call only returns once its per-IP workers have delivered their
+// devices, so the receiver must keep draining until it does.
+func (l *Listener) discoverOnce(ctx context.Context, conn *sunny.Connection, devs chan<- acquiredDevice) {
+	found := make(chan *sunny.Device, 10)
+	forwarded := make(chan struct{})
+	go func() {
+		defer close(forwarded)
+		for dev := range found {
+			select {
+			case devs <- dev:
+			case <-ctx.Done():
+				dev.Close()
+			}
+		}
+	}()
+
+	discoverCtx, cancel := context.WithTimeout(ctx, l.discoveryWindow())
+	conn.DiscoverDevices(discoverCtx, found, l.cfg.Discovery.Password)
+	cancel()
+
+	close(found)
+	<-forwarded
 }
 
 // LastSuccessfulReads returns, for every configured device, when it was last read

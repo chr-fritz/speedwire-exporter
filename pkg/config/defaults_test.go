@@ -125,3 +125,42 @@ func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
 	assert.Contains(t, err.Error(), "fetchInterval")
 	assert.Contains(t, err.Error(), "discovery.interval")
 }
+
+// TestValidateRejectsDeviceAddressWithPort keeps a config error from turning into a confusing
+// runtime failure: Speedwire is always on 9522 and the address is joined with it, so a
+// user-supplied port produces "10.0.0.5:9522:9522" and a resolve error much later.
+func TestValidateRejectsDeviceAddressWithPort(t *testing.T) {
+	c := Config{Devices: []DeviceConfig{{Serial: 1, Address: "10.0.0.5:9522"}}}
+	c.ApplyDefaults()
+
+	err := c.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "devices[0].address")
+}
+
+func TestValidateAcceptsPlainDeviceAddresses(t *testing.T) {
+	c := Config{Devices: []DeviceConfig{
+		{Serial: 1, Address: "10.0.0.5"},
+		{Serial: 2, Address: "meter.lan"},
+		{Serial: 3},
+	}}
+	c.ApplyDefaults()
+
+	assert.NoError(t, c.Validate())
+}
+
+func TestIsPinned(t *testing.T) {
+	assert.True(t, DeviceConfig{Address: "10.0.0.5"}.IsPinned())
+	assert.False(t, DeviceConfig{}.IsPinned())
+}
+
+func TestValidateRejectsIPv6DeviceAddress(t *testing.T) {
+	c := Config{Devices: []DeviceConfig{{Serial: 1, Address: "2001:db8::5"}}}
+	c.ApplyDefaults()
+
+	err := c.Validate()
+
+	require.Error(t, err, "an IPv6 literal would resolve as 2001:db8::5:9522 at dial time")
+	assert.Contains(t, err.Error(), "devices[0].address")
+}

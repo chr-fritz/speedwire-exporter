@@ -70,6 +70,7 @@ metrics:
     info: false                         # also emit a <prefix>_info metric (software version, device name)
 devices: # only listed serials are exported; labels are attached verbatim
     -   serial: 1234567890
+        address: 10.0.0.5   # optional: open this device directly instead of discovering it
         labels:
             meter: grid
 ```
@@ -85,6 +86,7 @@ devices: # only listed serials are exported; labels are attached verbatim
 | `metrics.energyMeterPrefix` / `metrics.inverterPrefix` | Metric name prefixes per device type.                       |
 | `metrics.info`                                         | Emit the optional `<prefix>_info` metric.                   |
 | `devices[].serial` / `devices[].labels`                | Which devices to export and the constant labels to attach.  |
+| `devices[].address`                                    | Optional host to open the device at, skipping discovery.    |
 
 > **Note:** all devices of the *same type* should declare the *same set of label
 > keys*. Differing label-key sets across same-type devices produce metric series
@@ -261,6 +263,37 @@ none afterwards.
 
 `readout` and each request to `/devices` run their own cycle on demand, which is expected: you
 asked to look at the wire.
+
+#### Pinning device addresses
+
+Give a device an `address:` and it is opened directly — a single unicast handshake with that
+host — instead of being looked for on the multicast group:
+
+```yaml
+devices:
+    -   serial: 1234567890
+        address: 10.0.0.5
+        labels:
+            meter: grid
+```
+
+If **every** configured device is pinned, the exporter never sends a discovery request at all,
+not even at startup. Use `readout` or `/devices` once to find the serials and addresses, then
+write them into the configuration. A fixed installation with DHCP reservations is exactly the
+case this is for.
+
+Two things to know about the trade-off:
+
+- The serial is verified after connecting. If the address has moved to a different device, the
+  exporter logs a warning and refuses to use it rather than publishing another device's values
+  under your labels.
+- A pinned device that cannot be reached is **not** looked for via discovery. It is retried at
+  its address, and the failure shows up as a warning plus a stale
+  `speedwire_last_successful_read_timestamp_seconds`. Falling back would quietly restore the
+  broadcast traffic pinning exists to avoid, and hide the misconfiguration causing it. Remove
+  the `address:` to go back to discovery for that device.
+
+Mixed configurations work: unpinned devices are still discovered as before.
 
 ## Building from source
 

@@ -17,6 +17,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -88,6 +89,16 @@ func (c Config) Validate() error {
 	}
 	if c.Metrics.InverterPrefix == "" {
 		errs = append(errs, errors.New("metrics.inverterPrefix must not be empty"))
+	}
+	for i, d := range c.Devices {
+		// The port is appended when the device is opened, so anything with a colon - a port, or
+		// an IPv6 literal - resolves as "host:9522:9522" and fails much later and much less
+		// clearly. Rejecting every colon is safe: the Speedwire group is IPv4 only.
+		if d.IsPinned() && strings.Contains(d.Address, ":") {
+			errs = append(errs, fmt.Errorf(
+				"devices[%d].address must not contain a port and must be IPv4 or a hostname, got %q",
+				i, d.Address))
+		}
 	}
 
 	return errors.Join(errs...)

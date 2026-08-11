@@ -20,7 +20,11 @@ metrics:
 # Note: all devices of the SAME type (e.g. all inverters, all energy meters) should
 # declare the SAME set of label keys. Differing label-key sets across same-type devices
 # produce metric series with inconsistent dimensions, which prometheus rejects on scrape.
+# Giving a device an "address" opens it directly instead of looking for it with a multicast
+# discovery broadcast. If every device is pinned this way, no discovery request is ever sent.
+# Without a port - Speedwire is always on 9522.
 devices: [ ]
 #  - serial: 1234567890
+#    address: 10.0.0.5
 #    labels:
 #      meter: grid
