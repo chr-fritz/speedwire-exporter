@@ -20,7 +20,7 @@ func find(t *testing.T, snaps []Snapshot, name, phase string) Snapshot {
 }
 
 func TestMapEnergyMeterSignsPower(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		// L1 imports 172.6 W, L2 feeds in 692.9 W
 		sunny.ActivePowerPlusL1:  172.6,
 		sunny.ActivePowerMinusL1: 0.0,
@@ -58,7 +58,7 @@ func TestMapEnergyMeterSignsPower(t *testing.T) {
 }
 
 func TestMapEnergyMeterDirectGauges(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.CurrentL1:        1.423,
 		sunny.CurrentL2:        2.187,
 		sunny.CurrentL3:        0.934,
@@ -111,7 +111,7 @@ func findEnergyCounter(t *testing.T, snaps []Snapshot, name, phase, direction st
 }
 
 func TestMapEnergyMeterEnergyCountersKWh(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		// 24 692.866 kWh consumed on total => 24692.866 * 3.6e6 Ws
 		sunny.ActiveEnergyPlus:  uint64(24692.866 * 3_600_000),
 		sunny.ActiveEnergyMinus: uint64(17724.3048 * 3_600_000),
@@ -170,7 +170,7 @@ func TestIsMappedEnergyMeter(t *testing.T) {
 }
 
 func TestEnergyMeterInfo(t *testing.T) {
-	s, ok := EnergyMeterInfo(map[sunny.ValueID]interface{}{
+	s, ok := EnergyMeterInfo(map[sunny.ValueID]any{
 		sunny.SoftwareVersion: "1.2.4.R",
 	})
 	assert.True(t, ok)
@@ -178,6 +178,6 @@ func TestEnergyMeterInfo(t *testing.T) {
 	assert.Equal(t, float64(1), s.Value)
 	assert.Equal(t, "1.2.4.R", s.Labels["software_version"])
 
-	_, ok = EnergyMeterInfo(map[sunny.ValueID]interface{}{})
+	_, ok = EnergyMeterInfo(map[sunny.ValueID]any{})
 	assert.False(t, ok)
 }

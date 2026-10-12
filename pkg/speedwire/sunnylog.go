@@ -27,7 +27,7 @@ import (
 // trace output, so it all lands at debug level.
 type sunnyLogger struct{ log *slog.Logger }
 
-func (l sunnyLogger) Printf(format string, v ...interface{}) {
+func (l sunnyLogger) Printf(format string, v ...any) {
 	// Guard the Sprintf: sunny logs one line per received datagram, and formatting them all
 	// only to have slog drop them would be pure waste in the common (info-level) case.
 	if !l.log.Enabled(context.Background(), slog.LevelDebug) {

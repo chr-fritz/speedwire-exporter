@@ -31,7 +31,7 @@ func TestDevicesHandlerReturnsJSON(t *testing.T) {
 	h := newDevicesHandler(func(ctx context.Context) ([]speedwire.DiscoveredDevice, error) {
 		return []speedwire.DiscoveredDevice{{
 			Serial: 42, Address: "1.2.3.4:9522", IsEnergyMeter: true,
-			Values: map[sunny.ValueID]interface{}{sunny.ActivePowerPlus: 15.4},
+			Values: map[sunny.ValueID]any{sunny.ActivePowerPlus: 15.4},
 		}}, nil
 	})
 
@@ -41,17 +41,17 @@ func TestDevicesHandlerReturnsJSON(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
-	var out []map[string]interface{}
+	var out []map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 	require.Len(t, out, 1)
 	assert.EqualValues(t, 42, out[0]["serial"])
 	assert.Equal(t, true, out[0]["isEnergyMeter"])
 
-	values, ok := out[0]["values"].([]interface{})
+	values, ok := out[0]["values"].([]any)
 	require.True(t, ok)
 	require.Len(t, values, 1)
 
-	value, ok := values[0].(map[string]interface{})
+	value, ok := values[0].(map[string]any)
 	require.True(t, ok)
 
 	info := sunny.GetValueInfo(sunny.ActivePowerPlus)
@@ -80,7 +80,7 @@ func TestDevicesHandlerServesDevicesFoundBeforeTheDeadline(t *testing.T) {
 	assert.Equal(t, "true", rec.Header().Get(partialHeader),
 		"the response must say that the list may be incomplete")
 
-	var out []map[string]interface{}
+	var out []map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
 	require.Len(t, out, 1)
 	assert.EqualValues(t, 42, out[0]["serial"])

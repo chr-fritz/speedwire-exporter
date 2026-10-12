@@ -80,7 +80,7 @@ var inverterBattery = []directDef{
 }
 
 // gaugesFrom builds gauge snapshots for every present value in defs.
-func gaugesFrom(values map[sunny.ValueID]interface{}, defs []directDef) []Snapshot {
+func gaugesFrom(values map[sunny.ValueID]any, defs []directDef) []Snapshot {
 	var out []Snapshot
 	for _, d := range defs {
 		if f, ok := toFloat(values[d.id]); ok {
@@ -90,7 +90,7 @@ func gaugesFrom(values map[sunny.ValueID]interface{}, defs []directDef) []Snapsh
 	return out
 }
 
-func kwhCounters(values map[sunny.ValueID]interface{}, defs []kwhDef) []Snapshot {
+func kwhCounters(values map[sunny.ValueID]any, defs []kwhDef) []Snapshot {
 	var out []Snapshot
 	for _, d := range defs {
 		if f, ok := toFloat(values[d.id]); ok {
@@ -101,7 +101,7 @@ func kwhCounters(values map[sunny.ValueID]interface{}, defs []kwhDef) []Snapshot
 }
 
 // MapInverter converts a raw sunny inverter value map into bare metric snapshots.
-func MapInverter(values map[sunny.ValueID]interface{}) []Snapshot {
+func MapInverter(values map[sunny.ValueID]any) []Snapshot {
 	var out []Snapshot
 	out = append(out, gaugesFrom(values, inverterGaugeDefs)...)
 	out = append(out, gaugesFrom(values, inverterHybridPower)...)
@@ -169,7 +169,7 @@ func IsMappedInverter(id sunny.ValueID) bool {
 // dimensions stable across devices sharing the same metric prefix, since prometheus'
 // Gather() (and the default promhttp error handling) fails the entire /metrics response
 // if two series of the same metric family carry different label-key sets.
-func InverterInfo(values map[sunny.ValueID]interface{}) (Snapshot, bool) {
+func InverterInfo(values map[sunny.ValueID]any) (Snapshot, bool) {
 	softwareVersion, hasSoftwareVersion := values[sunny.SoftwareVersion]
 	deviceName, hasDeviceName := values[sunny.DeviceName]
 	if !hasSoftwareVersion && !hasDeviceName {

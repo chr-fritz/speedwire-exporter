@@ -34,7 +34,7 @@ type stalledMeter struct{}
 
 func (stalledMeter) IsEnergyMeter() bool { return true }
 
-func (stalledMeter) GetValuesCtx(ctx context.Context) (map[sunny.ValueID]interface{}, error) {
+func (stalledMeter) GetValuesCtx(ctx context.Context) (map[sunny.ValueID]any, error) {
 	<-ctx.Done()
 	return nil, errors.New("energy meter does not respond")
 }
@@ -44,8 +44,8 @@ type respondingMeter struct{}
 
 func (respondingMeter) IsEnergyMeter() bool { return true }
 
-func (respondingMeter) GetValuesCtx(context.Context) (map[sunny.ValueID]interface{}, error) {
-	return map[sunny.ValueID]interface{}{
+func (respondingMeter) GetValuesCtx(context.Context) (map[sunny.ValueID]any, error) {
+	return map[sunny.ValueID]any{
 		sunny.ActivePowerPlus:  float64(100),
 		sunny.ActivePowerMinus: float64(0),
 	}, nil
@@ -58,8 +58,8 @@ type emptyInverter struct{}
 
 func (emptyInverter) IsEnergyMeter() bool { return false }
 
-func (emptyInverter) GetValuesCtx(context.Context) (map[sunny.ValueID]interface{}, error) {
-	return map[sunny.ValueID]interface{}{}, nil
+func (emptyInverter) GetValuesCtx(context.Context) (map[sunny.ValueID]any, error) {
+	return map[sunny.ValueID]any{}, nil
 }
 
 func testListener(t *testing.T) *Listener {
@@ -100,7 +100,7 @@ func TestReadRecordsLastSuccessfulRead(t *testing.T) {
 	l := testListener(t)
 	require.True(t, l.LastSuccessfulReads()[42].IsZero(), "no read happened yet")
 
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 
 	assert.False(t, l.LastSuccessfulReads()[42].IsZero(), "a successful read must record its time")
 }
@@ -108,7 +108,7 @@ func TestReadRecordsLastSuccessfulRead(t *testing.T) {
 func TestReadDoesNotRecordFreshnessOnFailure(t *testing.T) {
 	l := testListener(t)
 
-	l.read(context.Background(), 42, stalledMeter{})
+	l.read(t.Context(), 42, stalledMeter{})
 
 	assert.True(t, l.LastSuccessfulReads()[42].IsZero(), "a failed read must not count as fresh data")
 }
@@ -119,7 +119,7 @@ func TestReadDoesNotRecordFreshnessOnFailure(t *testing.T) {
 func TestReadDoesNotRecordFreshnessOnEmptyValues(t *testing.T) {
 	l := testListener(t)
 
-	l.read(context.Background(), 42, emptyInverter{})
+	l.read(t.Context(), 42, emptyInverter{})
 
 	assert.True(t, l.LastSuccessfulReads()[42].IsZero(),
 		"a read that produced no values must not count as fresh data")
@@ -130,7 +130,7 @@ func TestReadDoesNotRecordFreshnessOnEmptyValues(t *testing.T) {
 func TestReadSkipsUnconfiguredDevice(t *testing.T) {
 	l := testListener(t)
 
-	l.read(context.Background(), 99, stalledMeter{})
+	l.read(t.Context(), 99, stalledMeter{})
 
 	assert.NotContains(t, l.LastSuccessfulReads(), uint32(99))
 }
@@ -142,7 +142,7 @@ func TestLastSuccessfulReadsCoversEveryConfiguredDevice(t *testing.T) {
 	l := testListener(t)
 	l.cfg.Devices = append(l.cfg.Devices, config.DeviceConfig{Serial: 7, Labels: map[string]string{"meter": "pv"}})
 
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 	reads := l.LastSuccessfulReads()
 
 	require.Len(t, reads, 2)

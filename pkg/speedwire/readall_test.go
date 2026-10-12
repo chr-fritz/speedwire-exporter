@@ -34,10 +34,10 @@ type rendezvousMeter struct{ barrier *sync.WaitGroup }
 func (rendezvousMeter) IsEnergyMeter() bool { return true }
 func (rendezvousMeter) Close()              {}
 
-func (m rendezvousMeter) GetValuesCtx(context.Context) (map[sunny.ValueID]interface{}, error) {
+func (m rendezvousMeter) GetValuesCtx(context.Context) (map[sunny.ValueID]any, error) {
 	m.barrier.Done()
 	m.barrier.Wait()
-	return map[sunny.ValueID]interface{}{
+	return map[sunny.ValueID]any{
 		sunny.ActivePowerPlus:  float64(100),
 		sunny.ActivePowerMinus: float64(0),
 	}, nil
@@ -80,7 +80,7 @@ func TestReadAllReadsDevicesConcurrently(t *testing.T) {
 	}
 
 	done := make(chan struct{})
-	go func() { defer close(done); l.readAll(context.Background(), known) }()
+	go func() { defer close(done); l.readAll(t.Context(), known) }()
 
 	select {
 	case <-done:
@@ -112,7 +112,7 @@ func TestReadAllCostsOneDeadlineNotTheirSum(t *testing.T) {
 	}
 
 	start := time.Now()
-	l.readAll(context.Background(), known)
+	l.readAll(t.Context(), known)
 	elapsed := time.Since(start)
 
 	assert.GreaterOrEqual(t, elapsed, readTimeout, "sanity: the stalled devices did hit their deadline")
@@ -124,5 +124,5 @@ func TestReadAllCostsOneDeadlineNotTheirSum(t *testing.T) {
 func TestReadAllHandlesNoDevices(t *testing.T) {
 	l := listenerWithDevices(t)
 
-	assert.NotPanics(t, func() { l.readAll(context.Background(), map[uint32]knownDevice{}) })
+	assert.NotPanics(t, func() { l.readAll(t.Context(), map[uint32]knownDevice{}) })
 }

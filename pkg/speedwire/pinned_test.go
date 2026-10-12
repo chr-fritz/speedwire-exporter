@@ -81,7 +81,7 @@ func TestDialPinnedOpensConfiguredAddressesDirectly(t *testing.T) {
 	dialer := &recordingDialer{devices: map[string]*fakeDevice{"10.0.0.5": {serial: 42}}}
 	devs := make(chan acquiredDevice, 4)
 
-	l.dialPinned(context.Background(), dialer.dial, devs)
+	l.dialPinned(t.Context(), dialer.dial, devs)
 
 	assert.Equal(t, []string{"10.0.0.5"}, dialer.dialled)
 	got := drain(devs)
@@ -94,7 +94,7 @@ func TestDialPinnedIgnoresDevicesWithoutAddress(t *testing.T) {
 	dialer := &recordingDialer{}
 	devs := make(chan acquiredDevice, 4)
 
-	l.dialPinned(context.Background(), dialer.dial, devs)
+	l.dialPinned(t.Context(), dialer.dial, devs)
 
 	assert.Empty(t, dialer.dialled, "an unpinned device is found by discovery, not dialled")
 	assert.Empty(t, drain(devs))
@@ -105,12 +105,12 @@ func TestDialPinnedIgnoresDevicesWithoutAddress(t *testing.T) {
 // channel for it on every cycle.
 func TestDialPinnedSkipsDevicesThatAreBeingRead(t *testing.T) {
 	l := pinnedListener(t, config.DeviceConfig{Serial: 42, Address: "10.0.0.5", Labels: map[string]string{"m": "g"}})
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 
 	dialer := &recordingDialer{devices: map[string]*fakeDevice{"10.0.0.5": {serial: 42}}}
 	devs := make(chan acquiredDevice, 4)
 
-	l.dialPinned(context.Background(), dialer.dial, devs)
+	l.dialPinned(t.Context(), dialer.dial, devs)
 
 	assert.Empty(t, dialer.dialled)
 	assert.Empty(t, drain(devs))
@@ -125,7 +125,7 @@ func TestDialPinnedRejectsSerialMismatch(t *testing.T) {
 	dialer := &recordingDialer{devices: map[string]*fakeDevice{"10.0.0.5": wrong}}
 	devs := make(chan acquiredDevice, 4)
 
-	l.dialPinned(context.Background(), dialer.dial, devs)
+	l.dialPinned(t.Context(), dialer.dial, devs)
 
 	assert.Empty(t, drain(devs), "a device with the wrong serial must not be used")
 	assert.True(t, wrong.closed, "and must be released so its receiver registration does not leak")
@@ -139,7 +139,7 @@ func TestDialPinnedSurvivesAnUnreachableDevice(t *testing.T) {
 	dialer := &recordingDialer{err: errors.New("no Speedwire ping response")}
 	devs := make(chan acquiredDevice, 4)
 
-	l.dialPinned(context.Background(), dialer.dial, devs)
+	l.dialPinned(t.Context(), dialer.dial, devs)
 
 	assert.Equal(t, []string{"10.0.0.5", "10.0.0.6"}, dialer.dialled,
 		"one unreachable device must not stop the others from being dialled")
@@ -198,7 +198,7 @@ func runAcquireLoop(t *testing.T, l *Listener, probe *acquireProbe, sawActivity 
 	t.Helper()
 	l.cfg.Discovery.Interval = 10 * time.Millisecond
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	devs := make(chan acquiredDevice, 16)
 	done := make(chan struct{})
 	go func() { defer close(done); l.acquireLoop(ctx, probe.dial, probe.discover, devs) }()

@@ -26,7 +26,7 @@ type Snapshot struct {
 	Value  float64
 }
 
-func toFloat(v interface{}) (float64, bool) {
+func toFloat(v any) (float64, bool) {
 	switch n := v.(type) {
 	case float64:
 		if math.IsNaN(n) || math.IsInf(n, 0) || math.Abs(n) >= sentinelFloat {

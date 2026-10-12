@@ -40,7 +40,7 @@ type Listener struct {
 // meterReader is the part of *sunny.Device that read depends on. It exists so the read path
 // can be exercised without a Speedwire network.
 type meterReader interface {
-	GetValuesCtx(ctx context.Context) (map[sunny.ValueID]interface{}, error)
+	GetValuesCtx(ctx context.Context) (map[sunny.ValueID]any, error)
 	IsEnergyMeter() bool
 }
 
@@ -301,11 +301,9 @@ func (l *Listener) LastSuccessfulReads() map[uint32]time.Time {
 func (l *Listener) readAll(ctx context.Context, known map[uint32]knownDevice) {
 	var wg sync.WaitGroup
 	for serial, dev := range known {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			l.read(ctx, serial, dev)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -374,7 +372,7 @@ func mappedPredicate(isEnergyMeter bool) func(sunny.ValueID) bool {
 
 // deviceObservations computes the observations read should emit for a device's raw values,
 // depending on its kind (energy meter vs. inverter) and whether info series are enabled.
-func deviceObservations(isEnergyMeter bool, values map[sunny.ValueID]interface{}, m config.MetricsConfig) []observation {
+func deviceObservations(isEnergyMeter bool, values map[sunny.ValueID]any, m config.MetricsConfig) []observation {
 	if isEnergyMeter {
 		out := []observation{{m.EnergyMeterPrefix, mapping.MapEnergyMeter(values)}}
 		if m.Info {
@@ -395,7 +393,7 @@ func deviceObservations(isEnergyMeter bool, values map[sunny.ValueID]interface{}
 }
 
 // logUnmapped logs values the given predicate does not cover, once per ValueID at info level.
-func (l *Listener) logUnmapped(values map[sunny.ValueID]interface{}, isMapped func(sunny.ValueID) bool) {
+func (l *Listener) logUnmapped(values map[sunny.ValueID]any, isMapped func(sunny.ValueID) bool) {
 	for id := range values {
 		if !isMapped(id) {
 			if _, loaded := l.seenUnmapped.LoadOrStore(id, struct{}{}); !loaded {

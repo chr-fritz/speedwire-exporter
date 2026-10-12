@@ -15,7 +15,6 @@
 package speedwire
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -37,7 +36,7 @@ func TestNeedsDiscoveryBeforeAnyDeviceAnswered(t *testing.T) {
 // Speedwire group finds nothing new and only disturbs other devices on the group.
 func TestNeedsDiscoveryIsSkippedWhileEveryDeviceIsFresh(t *testing.T) {
 	l := testListener(t)
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 
 	assert.False(t, l.needsDiscovery(time.Now()))
 }
@@ -46,7 +45,7 @@ func TestNeedsDiscoveryIsSkippedWhileEveryDeviceIsFresh(t *testing.T) {
 // a device that changed address or rebooted stops answering, and has to be found again.
 func TestNeedsDiscoveryWhenADeviceGoesSilent(t *testing.T) {
 	l := testListener(t)
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 
 	assert.True(t, l.needsDiscovery(time.Now().Add(l.discoveryInterval()+time.Second)))
 }
@@ -57,7 +56,7 @@ func TestNeedsDiscoveryWhenOneOfSeveralDevicesIsSilent(t *testing.T) {
 	l := testListener(t)
 	l.cfg.Devices = append(l.cfg.Devices, config.DeviceConfig{Serial: 7, Labels: map[string]string{"meter": "pv"}})
 
-	l.read(context.Background(), 42, respondingMeter{})
+	l.read(t.Context(), 42, respondingMeter{})
 
 	assert.True(t, l.needsDiscovery(time.Now()), "serial 7 has never answered")
 }

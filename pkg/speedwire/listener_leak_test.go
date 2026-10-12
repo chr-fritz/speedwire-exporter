@@ -1,7 +1,6 @@
 package speedwire
 
 import (
-	"context"
 	"net"
 	"runtime"
 	"strings"
@@ -22,18 +21,13 @@ import (
 // recvCountingLogger counts sunny's "recv" trace lines so the test can confirm the listener's
 // connection actually received the fake broadcaster's packets (i.e. the discovery path was
 // genuinely exercised), independent of how many goroutines piled up.
-type recvCountingLogger struct{ recv int64 }
+type recvCountingLogger struct{ recv atomic.Int64 }
 
-func (l *recvCountingLogger) Printf(format string, _ ...interface{}) {
+func (l *recvCountingLogger) Printf(format string, _ ...any) {
 	if strings.HasPrefix(format, "recv ") {
-		atomic.AddInt64(&l.recv, 1)
+		l.recv.Add(1)
 	}
 }
-
-var (
-	leakTestOnce   sync.Once
-	leakTestLogger *recvCountingLogger
-)
 
 // installCountingLogger points sunny's package-level logger at a packet counter, exactly once
 // and without ever restoring it.
@@ -50,14 +44,12 @@ var (
 // listener runs and never again, which is what InstallSunnyLogger does at startup.
 //
 // Discovery timings need no such treatment - they come from the Listener's configuration.
-func installCountingLogger() *recvCountingLogger {
-	leakTestOnce.Do(func() {
-		leakTestLogger = &recvCountingLogger{}
-		sunny.Log = leakTestLogger
-		sunny.EnableDetailedPacketLogging(false)
-	})
-	return leakTestLogger
-}
+var installCountingLogger = sync.OnceValue(func() *recvCountingLogger {
+	logger := &recvCountingLogger{}
+	sunny.Log = logger
+	sunny.EnableDetailedPacketLogging(false)
+	return logger
+})
 
 // TestListenerDiscoveryDoesNotLeakGoroutines guards against unbounded goroutine growth caused by
 // running sunny's DiscoverDevices continuously. A device that keeps multicasting valid Speedwire
@@ -108,9 +100,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ticker := time.NewTicker(2 * time.Millisecond) // ~500 packets/sec
 		defer ticker.Stop()
 		for {
@@ -121,7 +111,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 				_, _ = sendConn.WriteTo(payload, group)
 			}
 		}
-	}()
+	})
 	defer func() { close(stop); wg.Wait() }()
 
 	// A configured device that is never found is what keeps discovery running: cycles are
@@ -136,8 +126,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 	}
 	l := NewListener(cfg, collector.NewCollector())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	runtime.GC()
 	base := runtime.NumGoroutine()
@@ -157,7 +146,7 @@ func TestListenerDiscoveryDoesNotLeakGoroutines(t *testing.T) {
 	// with continuous discovery it keeps climbing with every received packet.
 	late := sample(8 * time.Second)
 
-	recv := atomic.LoadInt64(&logger.recv)
+	recv := logger.recv.Load()
 	t.Logf("goroutines base=%d early=%d late=%d (sunny recv=%d)", base, early, late, recv)
 	if recv == 0 {
 		t.Skip("listener connection received no multicast packets; discovery path not exercised")

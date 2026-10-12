@@ -29,10 +29,10 @@ import (
 type DiscoverFunc func(ctx context.Context) ([]speedwire.DiscoveredDevice, error)
 
 type deviceValueView struct {
-	ID          int         `json:"id"`
-	Description string      `json:"description"`
-	Unit        string      `json:"unit"`
-	Value       interface{} `json:"value"`
+	ID          int    `json:"id"`
+	Description string `json:"description"`
+	Unit        string `json:"unit"`
+	Value       any    `json:"value"`
 }
 
 type deviceView struct {

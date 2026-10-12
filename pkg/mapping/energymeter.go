@@ -90,7 +90,7 @@ var energyDefs = []energyDef{
 	{sunny.ApparentEnergyMinusL3, "apparent_energy_total", "l3", "delivery"},
 }
 
-func energyCounters(values map[sunny.ValueID]interface{}) []Snapshot {
+func energyCounters(values map[sunny.ValueID]any) []Snapshot {
 	var out []Snapshot
 	for _, d := range energyDefs {
 		if f, ok := toFloat(values[d.id]); ok {
@@ -106,7 +106,7 @@ func energyCounters(values map[sunny.ValueID]interface{}) []Snapshot {
 }
 
 // MapEnergyMeter converts a raw sunny energy-meter value map into bare metric snapshots.
-func MapEnergyMeter(values map[sunny.ValueID]interface{}) []Snapshot {
+func MapEnergyMeter(values map[sunny.ValueID]any) []Snapshot {
 	var out []Snapshot
 	out = append(out, signedPower(values, "active_power", activePower)...)
 	out = append(out, signedPower(values, "reactive_power", reactivePower)...)
@@ -116,7 +116,7 @@ func MapEnergyMeter(values map[sunny.ValueID]interface{}) []Snapshot {
 	return out
 }
 
-func signedPower(values map[sunny.ValueID]interface{}, name string, defs []powerDef) []Snapshot {
+func signedPower(values map[sunny.ValueID]any, name string, defs []powerDef) []Snapshot {
 	var out []Snapshot
 	for _, d := range defs {
 		plus, okP := toFloat(values[d.plus])
@@ -134,7 +134,7 @@ func signedPower(values map[sunny.ValueID]interface{}, name string, defs []power
 	return out
 }
 
-func directGauges(values map[sunny.ValueID]interface{}) []Snapshot {
+func directGauges(values map[sunny.ValueID]any) []Snapshot {
 	var out []Snapshot
 	for _, d := range directGaugeDefs {
 		if f, ok := toFloat(values[d.id]); ok {
@@ -176,7 +176,7 @@ func IsMappedEnergyMeter(id sunny.ValueID) bool {
 }
 
 // EnergyMeterInfo returns a value-1 info snapshot carrying the software version, if present.
-func EnergyMeterInfo(values map[sunny.ValueID]interface{}) (Snapshot, bool) {
+func EnergyMeterInfo(values map[sunny.ValueID]any) (Snapshot, bool) {
 	v, ok := values[sunny.SoftwareVersion]
 	if !ok {
 		return Snapshot{}, false

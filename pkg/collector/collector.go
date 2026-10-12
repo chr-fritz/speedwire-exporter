@@ -2,6 +2,7 @@ package collector
 
 import (
 	"log/slog"
+	"maps"
 	"sort"
 	"strings"
 	"time"
@@ -39,12 +40,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 func (c *Collector) Observe(prefix, serial string, snaps []mapping.Snapshot, constLabels map[string]string) {
 	for _, s := range snaps {
 		labels := map[string]string{}
-		for k, v := range constLabels {
-			labels[k] = v
-		}
-		for k, v := range s.Labels {
-			labels[k] = v
-		}
+		maps.Copy(labels, constLabels)
+		maps.Copy(labels, s.Labels)
 
 		names, values := sortedLabels(labels)
 		fqName := prefix + "_" + s.Name

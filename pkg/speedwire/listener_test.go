@@ -22,7 +22,7 @@ import (
 )
 
 func TestDeviceObservations_EnergyMeter_NoInfo(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.ActivePowerPlus:  float64(100),
 		sunny.ActivePowerMinus: float64(0),
 	}
@@ -52,7 +52,7 @@ func TestDeviceObservations_EnergyMeter_NoInfo(t *testing.T) {
 }
 
 func TestDeviceObservations_EnergyMeter_WithInfo(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.ActivePowerPlus:  float64(100),
 		sunny.ActivePowerMinus: float64(0),
 		sunny.SoftwareVersion:  "1.2.3",
@@ -77,7 +77,7 @@ func TestDeviceObservations_EnergyMeter_WithInfo(t *testing.T) {
 }
 
 func TestDeviceObservations_Inverter_NoInfo(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.ActivePowerPlus: float64(500),
 		sunny.PowerS1:         float64(250),
 	}

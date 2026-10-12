@@ -14,7 +14,7 @@ func TestServerServesLiveEndpoint(t *testing.T) {
 	s, err := NewHttpServer(0) // :0 => random free port
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	go func() { _ = s.Run(ctx) }()
 	defer cancel()
 

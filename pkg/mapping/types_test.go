@@ -9,7 +9,7 @@ import (
 
 func TestToFloatHandlesSunnyTypes(t *testing.T) {
 	cases := []struct {
-		in   interface{}
+		in   any
 		want float64
 		ok   bool
 	}{

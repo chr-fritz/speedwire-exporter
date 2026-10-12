@@ -28,7 +28,7 @@ type DiscoveredDevice struct {
 	Serial        uint32
 	Address       string
 	IsEnergyMeter bool
-	Values        map[sunny.ValueID]interface{}
+	Values        map[sunny.ValueID]any
 }
 
 // discoveredReader is the part of *sunny.Device that readDiscovered depends on. It exists so

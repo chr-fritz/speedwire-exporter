@@ -15,7 +15,6 @@
 package speedwire
 
 import (
-	"context"
 	"net"
 	"testing"
 	"time"
@@ -56,7 +55,7 @@ func TestReadDiscoveredReturnsWhenDeviceStalls(t *testing.T) {
 	dev := &stalledDiscovered{}
 
 	done := make(chan DiscoveredDevice, 1)
-	go func() { done <- readDiscovered(context.Background(), dev, 100*time.Millisecond) }()
+	go func() { done <- readDiscovered(t.Context(), dev, 100*time.Millisecond) }()
 
 	select {
 	case got := <-done:
@@ -72,16 +71,16 @@ func TestReadDiscoveredReturnsWhenDeviceStalls(t *testing.T) {
 // device holds on the shared, process-lifetime connection.
 func TestReadDiscoveredAlwaysReleasesReceiver(t *testing.T) {
 	stalled := &stalledDiscovered{}
-	readDiscovered(context.Background(), stalled, 50*time.Millisecond)
+	readDiscovered(t.Context(), stalled, 50*time.Millisecond)
 	assert.True(t, stalled.closed, "a device that timed out must still be closed")
 
 	responding := &respondingDiscovered{}
-	readDiscovered(context.Background(), responding, time.Second)
+	readDiscovered(t.Context(), responding, time.Second)
 	assert.True(t, responding.closed)
 }
 
 func TestReadDiscoveredReturnsValuesOfRespondingDevice(t *testing.T) {
-	got := readDiscovered(context.Background(), &respondingDiscovered{}, time.Second)
+	got := readDiscovered(t.Context(), &respondingDiscovered{}, time.Second)
 
 	require.NotNil(t, got.Values)
 	assert.Equal(t, uint32(7), got.Serial)

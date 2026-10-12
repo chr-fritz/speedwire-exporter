@@ -26,7 +26,7 @@ outer:
 }
 
 func TestMapInverterCore(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.ActivePowerPlus:   3200.0,
 		sunny.PowerS1:           1600.0,
 		sunny.VoltageL1:         231.0,
@@ -61,7 +61,7 @@ func TestMapInverterCore(t *testing.T) {
 }
 
 func TestMapInverterEnergyAndHybrid(t *testing.T) {
-	values := map[sunny.ValueID]interface{}{
+	values := map[sunny.ValueID]any{
 		sunny.ActiveEnergyPlusKWh:      12345.6, // already kWh (no conversion)
 		sunny.PvPower:                  4100.0,
 		sunny.GridPowerExport:          2500.0,
@@ -140,7 +140,7 @@ func TestIsMappedInverterAndInfo(t *testing.T) {
 	assert.False(t, IsMappedInverter(sunny.ActiveEnergyMinus))
 	assert.False(t, IsMappedInverter(sunny.ActiveEnergyMinusKWh))
 
-	s, ok := InverterInfo(map[sunny.ValueID]interface{}{sunny.SoftwareVersion: "3.10.24.R"})
+	s, ok := InverterInfo(map[sunny.ValueID]any{sunny.SoftwareVersion: "3.10.24.R"})
 	assert.True(t, ok)
 	assert.Equal(t, "info", s.Name)
 	assert.Equal(t, "3.10.24.R", s.Labels["software_version"])
@@ -151,12 +151,12 @@ func TestIsMappedInverterAndInfo(t *testing.T) {
 	assert.Equal(t, "", s.Labels["device_name"])
 	assert.Len(t, s.Labels, 2)
 
-	s2, ok2 := InverterInfo(map[sunny.ValueID]interface{}{sunny.DeviceName: "SB3.6-1AV-41"})
+	s2, ok2 := InverterInfo(map[sunny.ValueID]any{sunny.DeviceName: "SB3.6-1AV-41"})
 	assert.True(t, ok2)
 	assert.Equal(t, "", s2.Labels["software_version"])
 	assert.Equal(t, "SB3.6-1AV-41", s2.Labels["device_name"])
 	assert.Len(t, s2.Labels, 2)
 
-	_, ok3 := InverterInfo(map[sunny.ValueID]interface{}{})
+	_, ok3 := InverterInfo(map[sunny.ValueID]any{})
 	assert.False(t, ok3)
 }
